@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-backend
+  labels:
+    app: neurashield
+    tier: backend
+spec:
+  selector:
+    app: neurashield-backend
+  ports:
+  - name: http
+    port: 3001
+    targetPort: 3001
+  - name: metrics
+    port: 3001
+    targetPort: 3001
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-frontend
+  labels:
+    app: neurashield
+    tier: frontend
+spec:
+  selector:
+    app: neurashield-frontend
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-ai
+  labels:
+    app: neurashield
+    tier: ai
+spec:
+  selector:
+    app: neurashield-ai
+  ports:
+  - name: http
+    port: 5000
+    targetPort: 5000
+  - name: metrics
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-frontend-public
+  labels:
+    app: neurashield
+    tier: frontend
+spec:
+  selector:
+    app: neurashield-frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3000
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-backend-public
+  labels:
+    app: neurashield
+    tier: backend
+spec:
+  selector:
+    app: neurashield-backend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3001
+  type: LoadBalancer 

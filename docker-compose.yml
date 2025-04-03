@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      target: backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - AI_SERVICE_URL=http://ai-service:5000
+      - IPFS_URL=http://ipfs:5001
+    volumes:
+      - ./backend:/app/backend
+      - /app/backend/node_modules
+    depends_on:
+      - ai-service
+      - ipfs
+    networks:
+      - neurashield-network
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+      - /app/frontend/.next
+    depends_on:
+      - backend
+    networks:
+      - neurashield-network
+
+  ai-service:
+    build:
+      context: .
+      target: ai-service
+    ports:
+      - "5000:5000"
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - MODEL_PATH=/app/ai_models/models/threat_detection
+      - PORT=5000
+      - METRICS_PORT=8000
+    volumes:
+      - ./ai_models:/app/ai_models
+    networks:
+      - neurashield-network
+
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "5001:5001"
+      - "8080:8080"
+      - "4001:4001"
+    volumes:
+      - ipfs-data:/data/ipfs
+    networks:
+      - neurashield-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - neurashield-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - neurashield-network
+
+volumes:
+  ipfs-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  neurashield-network:
+    driver: bridge 

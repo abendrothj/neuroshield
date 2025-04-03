@@ -1,6 +1,101 @@
 # NeuraShield
 
-A cutting-edge cybersecurity platform that combines AI-powered threat detection with blockchain-based immutable logging.
+A blockchain-powered cybersecurity platform enhanced with AI threat detection.
+
+## Project Overview
+
+NeuraShield combines blockchain security, AI-powered threat detection, and real-time monitoring to provide a comprehensive cybersecurity solution. The system records security events on blockchain for immutability, uses advanced AI models to detect threats, and provides a user-friendly dashboard for monitoring and analysis.
+
+## Architecture
+
+The system consists of three main components:
+
+1. **Frontend** - A Next.js-based web application providing dashboards and visualizations
+2. **Backend** - An Express.js server that connects to the blockchain network and coordinates with the AI service
+3. **AI Service** - A FastAPI service running the threat detection models and providing analysis capabilities
+
+## Getting Started
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Node.js 18+ (for local development)
+- Python 3.9+ (for local AI model development)
+
+### Running the Application
+
+#### Using Docker Compose (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/neurashield.git
+cd neurashield
+
+# Start the entire stack
+docker-compose up
+
+# Access the application at http://localhost:3000
+```
+
+#### Local Development
+
+```bash
+# Backend
+cd backend
+npm install
+npm run dev
+
+# Frontend
+cd frontend
+npm install
+npm run dev
+
+# AI Service
+cd ai_models
+pip install -r requirements.txt
+python -m ai_models.main
+```
+
+## Monitoring
+
+The system includes Prometheus and Grafana for monitoring:
+
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3003 (admin/admin)
+
+## Kubernetes Deployment
+
+For production deployment, Kubernetes configuration files are provided in the `k8s` directory:
+
+```bash
+# Apply Kubernetes configurations
+kubectl apply -f k8s/
+```
+
+## Environment Variables
+
+Each service requires specific environment variables. Example files are provided:
+
+- `backend/.env.example`
+- `frontend/.env.example`
+- AI service uses environment variables in the Kubernetes deployment files
+
+## Project Structure
+
+```
+neurashield/
+├── frontend/               # Next.js web application
+├── backend/                # Express.js server
+├── ai_models/              # AI threat detection models
+├── k8s/                    # Kubernetes deployment files
+├── monitoring/             # Prometheus configuration
+├── docker-compose.yml      # Docker Compose configuration
+└── Dockerfile              # Multi-stage Dockerfile
+```
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Features
 
@@ -20,77 +115,6 @@ A cutting-edge cybersecurity platform that combines AI-powered threat detection 
 - **AI/ML**: TensorFlow/PyTorch
 - **Infrastructure**: Docker, Kubernetes
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v18 or later)
-- Python (v3.8 or later)
-- Docker and Docker Compose
-- Go (v1.20 or later)
-- IPFS
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/neurashield.git
-cd neurashield
-```
-
-2. Install frontend dependencies:
-```bash
-cd frontend
-npm install
-```
-
-3. Install backend dependencies:
-```bash
-cd ../backend
-npm install
-```
-
-4. Set up environment variables:
-```bash
-cd ../frontend
-cp .env.example .env.local
-# Edit .env.local with your configuration
-```
-
-5. Start the development servers:
-```bash
-# Terminal 1 - Frontend
-cd frontend
-npm run dev
-
-# Terminal 2 - Backend
-cd backend
-npm run dev
-```
-
-## Project Structure
-
-```
-neurashield/
-├── frontend/              # Next.js frontend
-│   ├── app/              # Next.js pages
-│   ├── components/       # React components
-│   ├── lib/              # Shared utilities
-│   ├── public/           # Static assets
-│   └── styles/           # Global styles
-├── backend/              # Node.js backend
-│   ├── src/              # Source code
-│   ├── chaincode/        # Hyperledger Fabric chaincode
-│   ├── network-config/   # Fabric network configuration
-│   ├── fabric-samples/   # Fabric samples
-│   └── wallet/           # Fabric wallet
-├── ai_models/            # AI/ML models and training
-│   ├── src/              # Source code
-│   ├── models/           # Trained models
-│   └── datasets/         # Training datasets
-└── k8s/                  # Kubernetes manifests
-```
-
 ## Contributing
 
 1. Fork the repository
@@ -98,10 +122,6 @@ neurashield/
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
