@@ -9,14 +9,14 @@ node_modules/
 coverage/
 
 # next.js
-.next/
-out/
-build/
-dist/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
 
 # environment files
 .env
-.env.local
+frontend/.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -35,7 +35,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+frontend/next-env.d.ts
 
 # IDE
 .idea/
@@ -48,8 +48,8 @@ next-env.d.ts
 Thumbs.db
 
 # Fabric
-fabric-samples/
-wallet/
+backend/fabric-samples/
+backend/wallet/
 
 # Python
 __pycache__/
@@ -81,13 +81,15 @@ wheels/
 logs/
 
 # Project specific
-training_plots/
-training_summary_*.json
-*_training_history.png
-*_training_summary.json
+ai_models/training_plots/
+ai_models/training_summary_*.json
+ai_models/*_training_history.png
+ai_models/*_training_summary.json
 *.deb
 *.deb:Zone.Identifier
-model_checkpoints/
-datasets/raw/
-datasets/processed/
-datasets/
+ai_models/model_checkpoints/
+ai_models/datasets/raw/
+ai_models/datasets/processed/
+ai_models/datasets/
+scripts/ai_models/
+minikube*

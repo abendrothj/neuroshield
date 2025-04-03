@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neurashield-config
+data:
+  api_url: "http://neurashield-backend:3001"
+  ai_service_url: "http://neurashield-ai:3002"
+  fabric_network_config: |
+    {
+      "name": "neurashield-network",
+      "version": "1.0.0",
+      "client": {
+        "organization": "Org1",
+        "connection": {
+          "timeout": {
+            "peer": {
+              "endorser": "300"
+            }
+          }
+        }
+      }
+    } 

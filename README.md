@@ -40,17 +40,19 @@ cd neurashield
 
 2. Install frontend dependencies:
 ```bash
+cd frontend
 npm install
 ```
 
 3. Install backend dependencies:
 ```bash
-cd backend
+cd ../backend
 npm install
 ```
 
 4. Set up environment variables:
 ```bash
+cd ../frontend
 cp .env.example .env.local
 # Edit .env.local with your configuration
 ```
@@ -58,6 +60,7 @@ cp .env.example .env.local
 5. Start the development servers:
 ```bash
 # Terminal 1 - Frontend
+cd frontend
 npm run dev
 
 # Terminal 2 - Backend
@@ -69,12 +72,23 @@ npm run dev
 
 ```
 neurashield/
-├── app/                    # Next.js frontend pages
-├── components/            # React components
+├── frontend/              # Next.js frontend
+│   ├── app/              # Next.js pages
+│   ├── components/       # React components
+│   ├── lib/              # Shared utilities
+│   ├── public/           # Static assets
+│   └── styles/           # Global styles
 ├── backend/              # Node.js backend
-├── lib/                  # Shared utilities
-├── public/              # Static assets
-└── styles/              # Global styles
+│   ├── src/              # Source code
+│   ├── chaincode/        # Hyperledger Fabric chaincode
+│   ├── network-config/   # Fabric network configuration
+│   ├── fabric-samples/   # Fabric samples
+│   └── wallet/           # Fabric wallet
+├── ai_models/            # AI/ML models and training
+│   ├── src/              # Source code
+│   ├── models/           # Trained models
+│   └── datasets/         # Training datasets
+└── k8s/                  # Kubernetes manifests
 ```
 
 ## Contributing
