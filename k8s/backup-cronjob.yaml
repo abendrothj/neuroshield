@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-script
+  namespace: neurashield
+data:
+  backup-recovery.sh: |
+    #!/bin/bash
+    
+    # NeuraShield Backup and Recovery Script
+    # This script handles automated backup and recovery procedures
+    
+    # Default variables
+    BACKUP_DIR="/backups"
+    RETENTION_DAYS=30
+    BACKUP_COMPONENTS=("database" "models" "blockchain" "configs")
+    ACTION="backup"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    
+    echo "Starting backup process with timestamp: ${TIMESTAMP}"
+    mkdir -p "${BACKUP_DIR}/${TIMESTAMP}"
+    
+    # Backup database
+    echo "Backing up database..."
+    mongodump --host=mongodb --out=/tmp/mongodb_backup
+    cp -r /tmp/mongodb_backup "${BACKUP_DIR}/${TIMESTAMP}/mongodb_backup"
+    
+    # Backup AI models (assuming volume mount)
+    echo "Backing up AI models..."
+    mkdir -p "${BACKUP_DIR}/${TIMESTAMP}/models"
+    cp -r /mnt/models/* "${BACKUP_DIR}/${TIMESTAMP}/models/"
+    
+    # Backup blockchain data (assuming volume mount)
+    echo "Backing up blockchain data..."
+    mkdir -p "${BACKUP_DIR}/${TIMESTAMP}/blockchain"
+    cp -r /mnt/blockchain/* "${BACKUP_DIR}/${TIMESTAMP}/blockchain/"
+    
+    # Backup configuration files
+    echo "Backing up configuration files..."
+    mkdir -p "${BACKUP_DIR}/${TIMESTAMP}/configs"
+    kubectl get configmaps -n neurashield -o yaml > "${BACKUP_DIR}/${TIMESTAMP}/configs/configmaps.yaml"
+    kubectl get secrets -n neurashield -o yaml > "${BACKUP_DIR}/${TIMESTAMP}/configs/secrets.yaml"
+    
+    # Clean up old backups
+    echo "Cleaning up backups older than ${RETENTION_DAYS} days..."
+    find "$BACKUP_DIR" -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \; 2>/dev/null || true
+    
+    echo "Backup process completed successfully!"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: neurashield-backup
+  namespace: neurashield
+spec:
+  schedule: "0 1 * * *"  # Run daily at 1:00 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: backup-sa
+          containers:
+          - name: backup
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - /scripts/backup-recovery.sh
+            volumeMounts:
+            - name: backup-script
+              mountPath: /scripts
+            - name: backup-volume
+              mountPath: /backups
+            - name: models-volume
+              mountPath: /mnt/models
+              readOnly: true
+            - name: blockchain-volume
+              mountPath: /mnt/blockchain
+              readOnly: true
+            env:
+            - name: KUBECONFIG
+              value: /etc/kubernetes/kubeconfig
+          restartPolicy: OnFailure
+          volumes:
+          - name: backup-script
+            configMap:
+              name: backup-script
+              defaultMode: 0755
+          - name: backup-volume
+            persistentVolumeClaim:
+              claimName: backup-pvc
+          - name: models-volume
+            persistentVolumeClaim:
+              claimName: ai-models-pvc
+          - name: blockchain-volume
+            persistentVolumeClaim:
+              claimName: blockchain-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: neurashield
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-sa
+  namespace: neurashield
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-role
+  namespace: neurashield
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-rolebinding
+  namespace: neurashield
+subjects:
+- kind: ServiceAccount
+  name: backup-sa
+  namespace: neurashield
+roleRef:
+  kind: Role
+  name: backup-role
+  apiGroup: rbac.authorization.k8s.io 

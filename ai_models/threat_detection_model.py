@@ -10,11 +10,18 @@ import os
 import json
 from datetime import datetime
 import time
-from .metrics import (
-    start_metrics_server,
-    update_model_metrics,
-    record_prediction
-)
+
+# Make metrics optional
+try:
+    from metrics import (
+        start_metrics_server,
+        update_model_metrics,
+        record_prediction
+    )
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
+    logging.warning("Metrics module not available. Metrics collection disabled.")
 
 # Set up logging
 logging.basicConfig(
@@ -35,8 +42,12 @@ class ThreatDetectionModel:
         self.training_history = None
         self.model_name = "threat_detection"
         
-        # Start metrics server
-        start_metrics_server(port=8000)
+        # Start metrics server only if available
+        if METRICS_AVAILABLE:
+            try:
+                start_metrics_server(port=8000)
+            except Exception as e:
+                logging.warning(f"Failed to start metrics server: {str(e)}")
         
     def build_model(self) -> None:
         """Build the neural network model"""
@@ -70,7 +81,7 @@ class ThreatDetectionModel:
             raise
     
     def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray,
-              epochs: int = 100, batch_size: int = 64) -> Dict:
+              epochs: int = 100, batch_size: int = 64, callbacks=None) -> Dict:
         """Train the model"""
         try:
             if self.model is None:
@@ -80,10 +91,11 @@ class ThreatDetectionModel:
             checkpoint_path = f"checkpoints/model_{self.model_version}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.h5"
             os.makedirs("checkpoints", exist_ok=True)
             
-            callbacks = [
-                EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-                ModelCheckpoint(checkpoint_path, monitor='val_loss', save_best_only=True)
-            ]
+            if callbacks is None:
+                callbacks = [
+                    EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
+                    ModelCheckpoint(checkpoint_path, monitor='val_loss', save_best_only=True)
+                ]
             
             # Train the model
             history = self.model.fit(
@@ -97,14 +109,18 @@ class ThreatDetectionModel:
             
             self.training_history = history.history
             
-            # Update metrics
-            final_accuracy = history.history['val_accuracy'][-1]
-            memory_usage = self.model.count_params() * 4  # Approximate memory usage in bytes
-            update_model_metrics(
-                model_name=self.model_name,
-                accuracy=final_accuracy,
-                memory_usage=memory_usage
-            )
+            # Update metrics if available
+            if METRICS_AVAILABLE:
+                try:
+                    final_accuracy = history.history['val_accuracy'][-1]
+                    memory_usage = self.model.count_params() * 4  # Approximate memory usage in bytes
+                    update_model_metrics(
+                        model_name=self.model_name,
+                        accuracy=final_accuracy,
+                        memory_usage=memory_usage
+                    )
+                except Exception as e:
+                    logging.warning(f"Error updating metrics: {str(e)}")
             
             # Log training results
             logging.info(f"Training completed with {epochs} epochs")
@@ -127,22 +143,30 @@ class ThreatDetectionModel:
             predictions = self.model.predict(X, verbose=0)
             duration = time.time() - start_time
             
-            # Record prediction metrics
-            record_prediction(
-                model_name=self.model_name,
-                duration=duration,
-                success=True
-            )
+            # Record prediction metrics if available
+            if METRICS_AVAILABLE:
+                try:
+                    record_prediction(
+                        model_name=self.model_name,
+                        duration=duration,
+                        success=True
+                    )
+                except Exception as e:
+                    logging.warning(f"Error recording prediction metrics: {str(e)}")
             
             return predictions
             
         except Exception as e:
             logging.error(f"Error making predictions: {str(e)}")
-            record_prediction(
-                model_name=self.model_name,
-                duration=0,
-                success=False
-            )
+            if METRICS_AVAILABLE:
+                try:
+                    record_prediction(
+                        model_name=self.model_name,
+                        duration=0,
+                        success=False
+                    )
+                except:
+                    pass
             raise
     
     def save(self, path: str) -> None:
@@ -151,10 +175,19 @@ class ThreatDetectionModel:
             if self.model is None:
                 raise ValueError("No model to save")
             
-            # Save the model
-            model_path = os.path.join(path, "model.h5")
-            self.model.save(model_path)
+            # Create the directory if it doesn't exist
+            os.makedirs(path, exist_ok=True)
             
+            # Save the model using the newer recommended .keras format if possible
+            model_path = os.path.join(path, "model.keras")
+            try:
+                # Try newer save method first
+                self.model.save(model_path, save_format="keras")
+            except TypeError:
+                # Fall back to older save method (will save as H5)
+                logging.info("Falling back to default save format")
+                self.model.save(model_path)
+                
             # Save metadata
             metadata = {
                 "model_version": self.model_version,
@@ -168,7 +201,7 @@ class ThreatDetectionModel:
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
             
-            logging.info(f"Model saved to {path}")
+            logging.info(f"Model saved to {path} using Keras format")
             
         except Exception as e:
             logging.error(f"Error saving model: {str(e)}")
@@ -177,10 +210,13 @@ class ThreatDetectionModel:
     def load(self, path: str) -> None:
         """Load the model and metadata"""
         try:
-            # Load the model
-            model_path = os.path.join(path, "model.h5")
+            # Check for newer .keras format first
+            model_path = os.path.join(path, "model.keras")
             if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Model file not found at {model_path}")
+                # Try legacy .h5 format as fallback
+                model_path = os.path.join(path, "model.h5")
+                if not os.path.exists(model_path):
+                    raise FileNotFoundError(f"Model file not found at {path}")
             
             self.model = load_model(model_path)
             
