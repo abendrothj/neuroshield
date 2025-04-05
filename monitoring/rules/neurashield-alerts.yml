@@ -1,0 +1,64 @@
+groups:
+  - name: NeuraShield-Alerts
+    rules:
+      # Service availability alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "The service {{ $labels.job }} has been down for more than 1 minute."
+      
+      # Backend specific alerts
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status_code=~"5.*"}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate is above 5% (current value: {{ $value }})"
+      
+      - alert: SlowRequestProcessing
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "Slow request processing on {{ $labels.job }}"
+          description: "95th percentile of requests taking more than 2 seconds to process"
+      
+      # AI Service specific alerts
+      - alert: AIServiceHighMemoryUsage
+        expr: process_resident_memory_bytes{job="ai-service"} > 2 * 1024 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+          service: ai-model
+        annotations:
+          summary: "High memory usage on AI service"
+          description: "AI service is using more than 2GB of memory (current value: {{ $value | humanize }})"
+      
+      - alert: AIModelLowAccuracy
+        expr: model_accuracy < 0.9
+        for: 10m
+        labels:
+          severity: warning
+          service: ai-model
+        annotations:
+          summary: "Low model accuracy"
+          description: "The AI model accuracy has dropped below 90% (current value: {{ $value | humanize }})"
+      
+      - alert: AIServiceSlowPredictions
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="ai-service", route="/analyze"}[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: ai-model
+        annotations:
+          summary: "Slow predictions on AI service"
+          description: "95% of predictions taking more than 1 second to process" 

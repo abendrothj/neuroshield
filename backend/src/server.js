@@ -133,45 +133,146 @@ setInterval(updateBlockchainStatus, 5 * 60 * 1000);
 // AI service integration
 app.post('/api/analyze', 
     [
-        body('data').isObject().withMessage('Data must be an object'),
+        body('data').isArray().withMessage('Data must be an array of objects'),
         validate
     ],
     async (req, res) => {
         try {
             const { data } = req.body;
+            
+            // Validate data
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                return res.status(400).json({ 
+                    error: 'Invalid request format',
+                    message: 'The data field must be a non-empty array of objects'
+                });
+            }
+            
+            logger.info(`Sending data to AI service at ${process.env.AI_SERVICE_URL}/analyze`);
+            const startTime = Date.now();
+            
+            // Send to AI service for analysis
             const aiResponse = await axios.post(`${process.env.AI_SERVICE_URL}/analyze`, { data });
+            const processingTime = (Date.now() - startTime) / 1000;
             
             // Update model accuracy if provided in the response
             if (aiResponse.data.model_info && aiResponse.data.model_info.accuracy) {
                 modelAccuracy.set(aiResponse.data.model_info.accuracy);
-                logger.info(`Updated model accuracy: ${aiResponse.data.model_info.accuracy}`);
             }
             
+            // Extract the threat results
+            const results = aiResponse.data.results;
+            
+            // Record threats to blockchain and IPFS if needed
+            if (results.some(result => result.threat_level !== "Normal")) {
+                try {
+                    // Store the raw data on IPFS
+                    const ipfsResult = await ipfs.add(JSON.stringify({
+                        data,
+                        analysis: results,
+                        timestamp: new Date().toISOString()
+                    }));
+                    
+                    const cid = ipfsResult.cid.toString();
+                    logger.info(`Stored threat data on IPFS with CID: ${cid}`);
+                    
+                    // Record to blockchain (attempt only, don't block the response)
+                    // This is run asynchronously to not delay the response
+                    recordToBlockchain(cid, results).catch(err => {
+                        logger.error(`Failed to record to blockchain: ${err}`);
+                    });
+                    
+                    // Include the IPFS reference in the response
+                    aiResponse.data.ipfs_cid = cid;
+                } catch (ipfsError) {
+                    logger.error(`Failed to store on IPFS: ${ipfsError}`);
+                    // Continue without IPFS storage
+                }
+            }
+            
+            logger.info(`Analysis completed in ${processingTime}s, returned ${results.length} result(s)`);
             res.json(aiResponse.data);
         } catch (error) {
-            logger.error(`Failed to analyze data: ${error}`);
+            logger.error(`Failed to analyze data: ${error.message}`);
             res.status(500).json({ error: error.message });
         }
     }
 );
 
+// Helper function to record threat data to blockchain
+async function recordToBlockchain(cid, results) {
+    let gateway;
+    try {
+        gateway = await getGateway();
+        const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
+        const contract = network.getContract(process.env.CONTRACT_NAME);
+        
+        // Create a summary of the threats
+        const threatSummary = results.map(r => ({
+            level: r.threat_level,
+            confidence: r.confidence,
+            timestamp: new Date().toISOString()
+        }));
+        
+        // Submit transaction to record the threat
+        await contract.submitTransaction(
+            'recordThreat', 
+            cid, 
+            JSON.stringify(threatSummary)
+        );
+        
+        logger.info(`Successfully recorded threat to blockchain, IPFS CID: ${cid}`);
+        return true;
+    } catch (error) {
+        logger.error(`Blockchain recording error: ${error}`);
+        throw error;
+    } finally {
+        if (gateway) {
+            gateway.disconnect();
+        }
+    }
+}
+
 // AI metrics endpoint for frontend
 app.get('/api/ai-metrics', async (req, res) => {
     try {
         // Get metrics from AI service's formatted endpoint
+        logger.info(`Fetching metrics from AI service at ${process.env.AI_SERVICE_URL}/api/metrics`);
         const aiResponse = await axios.get(`${process.env.AI_SERVICE_URL}/api/metrics`);
         
         // Return metrics from AI service
-        res.json(aiResponse.data);
+        const metrics = aiResponse.data;
+        
+        // Add additional context from the blockchain
+        try {
+            let gateway = await getGateway();
+            const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
+            const contract = network.getContract(process.env.CONTRACT_NAME);
+            
+            // Get threat stats from blockchain
+            const threatStatsBuffer = await contract.evaluateTransaction('getThreatStats');
+            const threatStats = JSON.parse(threatStatsBuffer.toString());
+            
+            metrics.threat_stats = threatStats;
+            gateway.disconnect();
+        } catch (blockchainError) {
+            logger.warn(`Could not get blockchain metrics: ${blockchainError.message}`);
+            // Continue without blockchain metrics
+        }
+        
+        res.json(metrics);
     } catch (error) {
-        logger.error(`Failed to get AI metrics: ${error}`);
+        logger.error(`Failed to get AI metrics: ${error.message}`);
         // Return default values if can't get real metrics
         res.json({
             accuracy: modelAccuracy.get() || 0.9,
             inference_time: 0.05,
             memory_usage: 500 * 1024 * 1024,
             predictions_total: 10000,
-            error_rate: 0.01
+            error_rate: 0.01,
+            model_version: "1.0.0",
+            threat_detection_rate: 0.05,
+            gpu_utilization: 0.3
         });
     }
 });

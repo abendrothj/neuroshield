@@ -104,12 +104,14 @@ ai_models/training_summary_*.json
 ai_models/*_training_history.png
 ai_models/*_training_summary.json
 *.deb
+ai_models/checkpoints/
 *.deb:Zone.Identifier
 ai_models/model_checkpoints/
 ai_models/datasets/raw/
 ai_models/datasets/processed/
 ai_models/datasets/
 scripts/ai_models/
+ai_models/venv
 minikube*
 
 # AI model files

@@ -1,7 +1,8 @@
-from prometheus_client import start_http_server, Counter, Gauge, Histogram
+from prometheus_client import start_http_server, Counter, Gauge, Histogram, Summary
 import time
 import threading
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -45,6 +46,53 @@ model_gpu_utilization = Gauge(
     ['gpu_id']
 )
 
+model_version = Gauge(
+    'model_version_info',
+    'Information about the currently loaded model version',
+    ['version', 'deployment_time']
+)
+
+prediction_requests_total = Counter(
+    'prediction_requests_total', 
+    'Total number of prediction requests',
+    ['status']
+)
+
+prediction_results_total = Counter(
+    'prediction_results_total', 
+    'Total number of predictions by result',
+    ['result']
+)
+
+prediction_latency = Histogram(
+    'prediction_latency_seconds', 
+    'Prediction request latency in seconds',
+    ['status'],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, float('inf'))
+)
+
+prediction_confidence = Summary(
+    'prediction_confidence',
+    'Confidence of predictions',
+    ['result']
+)
+
+gpu_memory_usage = Gauge(
+    'gpu_memory_bytes',
+    'GPU memory usage in bytes'
+)
+
+batch_size = Summary(
+    'batch_size',
+    'Size of prediction batches'
+)
+
+feature_importance = Gauge(
+    'feature_importance',
+    'Importance of each feature in the model',
+    ['feature_name']
+)
+
 def start_metrics_server(port=8000):
     """Start the Prometheus metrics server"""
     try:
@@ -83,4 +131,30 @@ def record_prediction(model_name, duration, success=True):
         
     except Exception as e:
         logging.error(f'Failed to record prediction: {str(e)}')
-        raise 
+        raise
+
+def record_prediction_result(result, confidence):
+    """Record a prediction result"""
+    prediction_results_total.labels(result=result).inc()
+    prediction_confidence.labels(result=result).observe(confidence)
+
+def set_model_version(version, deployment_time):
+    """Set model version info"""
+    model_version.labels(version=version, deployment_time=deployment_time).set(1)
+
+def update_gpu_memory():
+    """Update GPU memory usage"""
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            # Get GPU memory usage (this will only work with TensorFlow)
+            gpu_mem_info = tf.config.experimental.get_memory_info('GPU:0')
+            gpu_memory_usage.set(gpu_mem_info.get('current', 0))
+    except:
+        # If there's an error, just set to 0
+        gpu_memory_usage.set(0)
+        
+def record_batch_size(size):
+    """Record batch size"""
+    batch_size.observe(size) 

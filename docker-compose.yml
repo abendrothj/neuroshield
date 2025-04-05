@@ -8,18 +8,29 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - PORT=3001
       - AI_SERVICE_URL=http://ai-service:5000
       - IPFS_URL=http://ipfs:5001
+      - CHANNEL_NAME=neurashield-channel
+      - CONTRACT_NAME=neurashield
+      - ORGANIZATION_ID=Org1
+      - USER_ID=admin
+      - LOG_LEVEL=info
     volumes:
-      - ./backend:/app/backend
-      - /app/backend/node_modules
+      - backend-data:/app/backend/data
     depends_on:
       - ai-service
       - ipfs
     networks:
       - neurashield-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     build:
@@ -28,16 +39,19 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:3001
-    volumes:
-      - ./frontend:/app/frontend
-      - /app/frontend/node_modules
-      - /app/frontend/.next
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://backend:3001
     depends_on:
       - backend
     networks:
       - neurashield-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   ai-service:
     build:
@@ -48,13 +62,33 @@ services:
       - "8000:8000"
     environment:
       - PYTHONPATH=/app
-      - MODEL_PATH=/app/ai_models/models/threat_detection
+      - MODEL_PATH=/app/ai_models/models/threat_detection_20250403_212211
       - PORT=5000
       - METRICS_PORT=8000
+      - LOG_LEVEL=INFO
+      - INPUT_SHAPE=39
+      - NUM_CLASSES=2
+      - THREAT_THRESHOLD=0.8
+      - API_TIMEOUT=30
+      - MAX_BATCH_SIZE=100
     volumes:
-      - ./ai_models:/app/ai_models
+      - ai-model-data:/app/ai_models/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - neurashield-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   ipfs:
     image: ipfs/kubo:latest
@@ -66,6 +100,12 @@ services:
       - ipfs-data:/data/ipfs
     networks:
       - neurashield-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   prometheus:
     image: prom/prometheus:latest
@@ -76,6 +116,10 @@ services:
       - prometheus-data:/prometheus
     networks:
       - neurashield-network
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - ai-service
 
   grafana:
     image: grafana/grafana:latest
@@ -85,16 +129,34 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
+      - ./monitoring/grafana-provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
     networks:
       - neurashield-network
+    restart: unless-stopped
+
+  alert-manager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/config.yml
+      - alertmanager-data:/data
+    networks:
+      - neurashield-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
 
 volumes:
   ipfs-data:
   prometheus-data:
   grafana-data:
+  alertmanager-data:
+  ai-model-data:
+  backend-data:
 
 networks:
   neurashield-network:

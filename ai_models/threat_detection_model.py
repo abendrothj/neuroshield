@@ -172,65 +172,60 @@ class ThreatDetectionModel:
     def save(self, path: str) -> None:
         """Save the model and metadata"""
         try:
-            if self.model is None:
-                raise ValueError("No model to save")
-            
-            # Create the directory if it doesn't exist
+            # Create directory if it doesn't exist
             os.makedirs(path, exist_ok=True)
             
-            # Save the model using the newer recommended .keras format if possible
-            model_path = os.path.join(path, "model.keras")
-            try:
-                # Try newer save method first
-                self.model.save(model_path, save_format="keras")
-            except TypeError:
-                # Fall back to older save method (will save as H5)
-                logging.info("Falling back to default save format")
-                self.model.save(model_path)
-                
+            # Save model configuration
+            config = {
+                'input_shape': self.input_shape,
+                'num_classes': self.num_classes
+            }
+            with open(os.path.join(path, 'model_config.json'), 'w') as f:
+                json.dump(config, f)
+            
+            # Save model weights
+            self.model.save_weights(os.path.join(path, 'model.keras'))
+            
             # Save metadata
             metadata = {
-                "model_version": self.model_version,
-                "input_shape": self.input_shape,
-                "num_classes": self.num_classes,
-                "training_history": self.training_history,
-                "timestamp": datetime.now().isoformat()
+                'version': self.model_version,
+                'input_shape': self.input_shape,
+                'num_classes': self.num_classes,
+                'training_history': self.training_history
             }
+            with open(os.path.join(path, 'metadata.json'), 'w') as f:
+                json.dump(metadata, f)
             
-            metadata_path = os.path.join(path, "metadata.json")
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            
-            logging.info(f"Model saved to {path} using Keras format")
+            logging.info(f"Model saved to {path}")
             
         except Exception as e:
             logging.error(f"Error saving model: {str(e)}")
             raise
     
-    def load(self, path: str) -> None:
-        """Load the model and metadata"""
+    def load(self, model_path: str) -> None:
+        """Load a trained model from disk"""
         try:
-            # Check for newer .keras format first
-            model_path = os.path.join(path, "model.keras")
-            if not os.path.exists(model_path):
-                # Try legacy .h5 format as fallback
-                model_path = os.path.join(path, "model.h5")
-                if not os.path.exists(model_path):
-                    raise FileNotFoundError(f"Model file not found at {path}")
+            # Load the model configuration
+            with open(os.path.join(model_path, 'model_config.json'), 'r') as f:
+                config = json.load(f)
             
-            self.model = load_model(model_path)
+            # Create a new model with the same architecture
+            self.model = self._create_model(
+                input_shape=config['input_shape'],
+                num_classes=config['num_classes']
+            )
+            
+            # Load the weights
+            self.model.load_weights(os.path.join(model_path, 'model.keras'))
             
             # Load metadata
-            metadata_path = os.path.join(path, "metadata.json")
-            if os.path.exists(metadata_path):
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                    self.model_version = metadata.get("model_version", self.model_version)
-                    self.input_shape = metadata.get("input_shape", self.input_shape)
-                    self.num_classes = metadata.get("num_classes", self.num_classes)
-                    self.training_history = metadata.get("training_history", self.training_history)
+            with open(os.path.join(model_path, 'metadata.json'), 'r') as f:
+                self.metadata = json.load(f)
             
-            logging.info(f"Model loaded from {path}")
+            self.model_version = self.metadata.get('version', '1.0.0')
+            self.training_history = self.metadata.get('training_history', {})
+            
+            logging.info(f"Model loaded successfully from {model_path}")
             
         except Exception as e:
             logging.error(f"Error loading model: {str(e)}")
@@ -254,6 +249,32 @@ class ThreatDetectionModel:
         except Exception as e:
             logging.error(f"Error getting model info: {str(e)}")
             raise
+
+    def _create_model(self, input_shape: int, num_classes: int) -> tf.keras.Model:
+        """Create a new model with the specified architecture"""
+        self.input_shape = (input_shape,)
+        self.num_classes = num_classes
+        
+        model = Sequential([
+            Dense(128, activation='relu', input_shape=(input_shape,)),
+            BatchNormalization(),
+            Dropout(0.3),
+            Dense(64, activation='relu'),
+            BatchNormalization(),
+            Dropout(0.3),
+            Dense(32, activation='relu'),
+            BatchNormalization(),
+            Dropout(0.3),
+            Dense(num_classes, activation='softmax')
+        ])
+        
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
+        )
+        
+        return model
 
 def create_sample_data(n_samples=1000):
     """Create sample data for testing"""
