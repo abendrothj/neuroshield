@@ -1,15 +1,16 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from pydantic import BaseModel, Field, validator
 import uvicorn
 import logging
 import numpy as np
 import time
 import os
+import gc
 from dotenv import load_dotenv
 from threat_detection_model import ThreatDetectionModel
 from metrics import update_model_metrics, record_prediction, record_batch_size, update_gpu_memory, record_prediction_result, set_model_version
 import tensorflow as tf
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 import psutil
 
 # Load environment variables
@@ -32,12 +33,50 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize model (lazy loading)
-model = None
+# Model state management
+model_state = {
+    "model": None,
+    "last_used": 0,
+    "model_version": "unknown",
+    "model_path": os.getenv('MODEL_PATH', 'models/threat_detection_20250403_212211'),
+    "input_shape": int(os.getenv('INPUT_SHAPE', 39)),
+    "num_classes": int(os.getenv('NUM_CLASSES', 2)),
+    "lock": False  # Simple lock to prevent concurrent model loading
+}
 
-# Input data model
+# Input data model with validation
+class AnalysisRequestItem(BaseModel):
+    model_config = {"protected_namespaces": ()}
+    # Each data item must be a dict of key-value pairs
+    # Keys don't matter, but we need to validate the values are numeric
+    __root__: Dict[str, Union[float, int]]
+    
+    @validator('__root__')
+    def check_values(cls, v):
+        # Check that we have the expected number of features
+        expected_features = model_state["input_shape"]
+        if len(v) != expected_features:
+            raise ValueError(f"Expected {expected_features} features, but got {len(v)}")
+        
+        # Check that all values are numeric
+        for key, value in v.items():
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"Value for {key} must be numeric, got {type(value)}")
+        return v
+
 class AnalysisRequest(BaseModel):
-    data: list[dict]
+    model_config = {"protected_namespaces": ()}
+    data: List[Dict[str, Union[float, int]]]
+    
+    @validator('data')
+    def check_data(cls, v):
+        if not v:
+            raise ValueError("Data list cannot be empty")
+        
+        max_batch_size = int(os.getenv('MAX_BATCH_SIZE', 100))
+        if len(v) > max_batch_size:
+            raise ValueError(f"Batch size exceeds maximum of {max_batch_size}")
+        return v
 
 # Health response model
 class HealthResponse(BaseModel):
@@ -61,18 +100,49 @@ class AnalysisResponse(BaseModel):
     results: List[ThreatPrediction]
     processing_time: float
     model_version: str
+    model_info: Optional[dict] = None
 
 def get_model():
-    """Get or initialize the model"""
-    global model
+    """Get or initialize the model with memory management"""
+    current_time = time.time()
     
-    if model is None:
+    # If model is already loaded and recently used, return it
+    if model_state["model"] is not None:
+        model_state["last_used"] = current_time
+        return model_state["model"]
+    
+    # If another request is loading the model, wait briefly
+    if model_state["lock"]:
+        retry_count = 0
+        while model_state["lock"] and retry_count < 5:
+            time.sleep(0.2)
+            retry_count += 1
+            if model_state["model"] is not None:
+                model_state["last_used"] = current_time
+                return model_state["model"]
+    
+    # Acquire lock
+    model_state["lock"] = True
+    
+    try:
         logging.info("Initializing model...")
-        model_path = os.getenv('MODEL_PATH', 'models/threat_detection_20250403_212211')
+        model_path = model_state["model_path"]
         
+        # Clean memory before loading model
+        if model_state["model"] is not None:
+            del model_state["model"]
+            gc.collect()
+            if tf.config.list_physical_devices('GPU'):
+                tf.keras.backend.clear_session()
+        
+        # Load the model
         try:
             model = ThreatDetectionModel()
             model.load(model_path)
+            model_state["model"] = model
+            model_state["model_version"] = model.model_version
+            model_state["last_used"] = current_time
+            
             logging.info(f"Model loaded successfully from {model_path}")
             
             # Update metrics
@@ -84,24 +154,58 @@ def get_model():
                     memory_usage=model.model.count_params() * 4
                 )
                 
+            return model_state["model"]
+                
         except Exception as e:
             logging.error(f"Error loading model: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error loading model: {str(e)}")
             
-    return model
+    finally:
+        # Release lock
+        model_state["lock"] = False
+
+def unload_unused_model(background_tasks):
+    """Periodically unload model from memory if unused"""
+    current_time = time.time()
+    idle_threshold = 600  # 10 minutes
+    
+    if model_state["model"] is not None and current_time - model_state["last_used"] > idle_threshold:
+        background_tasks.add_task(_unload_model)
+
+def _unload_model():
+    """Actual function to unload the model"""
+    if model_state["model"] is not None:
+        logging.info("Unloading unused model to free memory")
+        del model_state["model"]
+        model_state["model"] = None
+        gc.collect()
+        if tf.config.list_physical_devices('GPU'):
+            tf.keras.backend.clear_session()
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check(background_tasks: BackgroundTasks):
     """Health check endpoint"""
     try:
-        current_model = get_model()
-        return {
-            "status": "healthy",
-            "model_loaded": current_model is not None,
-            "gpu_available": len(tf.config.list_physical_devices('GPU')) > 0,
-            "model_version": current_model.model_version if current_model else "unknown",
-            "model_info": current_model.get_model_info() if current_model else {}
-        }
+        # Check if we should unload the model
+        unload_unused_model(background_tasks)
+        
+        # Get model info if loaded, or basic info if not
+        if model_state["model"] is not None:
+            return {
+                "status": "healthy",
+                "model_loaded": True,
+                "gpu_available": len(tf.config.list_physical_devices('GPU')) > 0,
+                "model_version": model_state["model_version"],
+                "model_info": model_state["model"].get_model_info() if model_state["model"] else {}
+            }
+        else:
+            return {
+                "status": "healthy",
+                "model_loaded": False,
+                "gpu_available": len(tf.config.list_physical_devices('GPU')) > 0,
+                "model_version": model_state["model_version"],
+                "model_info": {"status": "not loaded", "ready_to_load": True}
+            }
     except Exception as e:
         logging.error(f"Health check failed: {str(e)}")
         return {
@@ -109,35 +213,66 @@ async def health_check():
             "model_loaded": False,
             "gpu_available": False,
             "model_version": "unknown",
-            "model_info": {}
+            "model_info": {"error": str(e)}
         }
 
+def preprocess_features(data):
+    """Normalize and validate input features"""
+    try:
+        # Extract features from all samples
+        features_list = []
+        
+        for sample in data:
+            # Convert dict to ordered list based on keys
+            feature_values = list(sample.values())
+            
+            # Ensure we have the expected number of features
+            if len(feature_values) != model_state["input_shape"]:
+                raise ValueError(f"Expected {model_state['input_shape']} features, got {len(feature_values)}")
+            
+            # Convert to numpy array and normalize
+            features = np.array(feature_values, dtype=np.float32)
+            
+            # Basic normalization (keeping simple here, but could be more sophisticated)
+            features = (features - np.mean(features)) / (np.std(features) + 1e-8)
+            
+            features_list.append(features)
+        
+        # Stack features into a batch
+        features_batch = np.vstack(features_list)
+        return features_batch
+    
+    except Exception as e:
+        logging.error(f"Feature preprocessing error: {str(e)}")
+        raise ValueError(f"Feature preprocessing error: {str(e)}")
+
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_data(request: AnalysisRequest):
+async def analyze_data(request: AnalysisRequest, background_tasks: BackgroundTasks):
     """Analyze data for threats"""
     try:
         # Get the model
         current_model = get_model()
         
-        # Convert data to numpy array
+        # Record batch size
+        record_batch_size(len(request.data))
+        
+        # Preprocess features
         try:
-            # Record batch size
-            record_batch_size(len(request.data))
-            
-            # Extract features from all samples
-            features_list = []
-            for sample in request.data:
-                features = np.array([list(sample.values())], dtype=np.float32)
-                features_list.append(features)
-            
-            # Stack features into a batch
-            features_batch = np.vstack(features_list)
-            
-            # Make predictions
-            start_time = time.time()
+            features_batch = preprocess_features(request.data)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        
+        # Make predictions
+        start_time = time.time()
+        
+        try:
             predictions = current_model.predict(features_batch)
             prediction_time = time.time() - start_time
             
+            # Check prediction shape matches expectations
+            if predictions.shape[1] != model_state["num_classes"]:
+                raise ValueError(f"Model returned {predictions.shape[1]} classes but expected {model_state['num_classes']}")
+                
             # Update GPU memory metrics
             update_gpu_memory()
             
@@ -184,26 +319,37 @@ async def analyze_data(request: AnalysisRequest):
                 deployment_time = current_model.metadata["deployment_time"]
             set_model_version(current_model.model_version, deployment_time)
             
+            # Check if we should unload the model in the background
+            unload_unused_model(background_tasks)
+            
             return {
                 "results": results,
                 "processing_time": prediction_time,
-                "model_version": current_model.model_version
+                "model_version": current_model.model_version,
+                "model_info": current_model.get_model_info()
             }
             
-        except Exception as e:
+        except Exception as model_error:
             # Record failure metrics
             record_prediction(
-                model_name=current_model.model_name if current_model else "unknown",
+                model_name=current_model.model_name,
+                duration=time.time() - start_time,
+                success=False
+            )
+            raise HTTPException(status_code=500, detail=f"Prediction error: {str(model_error)}")
+            
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        # Record failure metrics
+        if model_state["model"]:
+            record_prediction(
+                model_name=model_state["model"].model_name if model_state["model"] else "unknown",
                 duration=0,
                 success=False
             )
-            
-            logging.error(f"Error making predictions: {str(e)}")
-            raise HTTPException(status_code=400, detail=f"Error making predictions: {str(e)}")
-            
-    except Exception as e:
-        logging.error(f"Error analyzing data: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error analyzing data: {str(e)}")
+        logging.error(f"Analysis error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
 
 @app.get("/metrics")
 async def metrics():

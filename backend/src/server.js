@@ -37,7 +37,33 @@ const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100 // limit each IP to 100 requests per windowMs
 });
-app.use(limiter);
+
+// Specific rate limiters for different operations
+const analyzeRateLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 20, // limit each IP to 20 requests per windowMs
+    message: 'Too many analysis requests, please try again later'
+});
+
+const metricsRateLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 30, // limit each IP to 30 requests per windowMs
+    message: 'Too many metrics requests, please try again later'
+});
+
+const eventsRateLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000, // 10 minutes
+    max: 50, // limit each IP to 50 requests per windowMs
+    message: 'Too many event requests, please try again later'
+});
+
+const trainingRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 60 minutes
+    max: 5, // limit each IP to 5 requests per hour
+    message: 'Too many training requests, please try again later'
+});
+
+app.use(limiter); // Apply general rate limiting to all endpoints not specifically limited
 
 // IPFS configuration
 const ipfs = create({ url: process.env.IPFS_URL || 'http://localhost:5001' });
@@ -46,12 +72,72 @@ const ipfs = create({ url: process.env.IPFS_URL || 'http://localhost:5001' });
 const ccpPath = path.resolve(__dirname, '..', 'connection-profile.json');
 const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
 
-// Initialize Fabric gateway
+// Connection pool for Fabric gateway
+const gatewayPool = {
+    pool: [], // Store active gateways
+    maxSize: 5, // Maximum number of gateways in the pool
+    activeConnections: 0,
+    
+    async getGateway() {
+        // If a gateway is available in the pool, return it
+        if (this.pool.length > 0) {
+            logger.debug('Reusing gateway from pool');
+            this.activeConnections++;
+            return this.pool.pop();
+        }
+        
+        // Otherwise create a new gateway
+        logger.debug('Creating new gateway');
+        const wallet = await Wallets.newFileSystemWallet(path.join(__dirname, '..', 'wallet'));
+        const gateway = new Gateway();
+        await gateway.connect(ccp, { 
+            wallet, 
+            identity: process.env.USER_ID || 'admin', 
+            discovery: { enabled: true, asLocalhost: true }
+        });
+        this.activeConnections++;
+        return gateway;
+    },
+    
+    releaseGateway(gateway) {
+        // Only add gateway back to pool if not exceeding max size
+        try {
+            if (this.pool.length < this.maxSize) {
+                this.pool.push(gateway);
+                logger.debug('Gateway returned to pool');
+            } else {
+                // If pool is full, disconnect this gateway
+                gateway.disconnect();
+                logger.debug('Gateway disconnected (pool full)');
+            }
+        } catch (error) {
+            logger.error(`Error releasing gateway: ${error}`);
+            try {
+                gateway.disconnect();
+            } catch (e) {
+                logger.error(`Error disconnecting gateway: ${e}`);
+            }
+        }
+        this.activeConnections--;
+    }
+};
+
+// Helper function to get and safely release a gateway
+async function withGateway(callback) {
+    let gateway = null;
+    try {
+        gateway = await gatewayPool.getGateway();
+        return await callback(gateway);
+    } finally {
+        if (gateway) {
+            gatewayPool.releaseGateway(gateway);
+        }
+    }
+}
+
+// Initialize Fabric gateway - kept for backward compatibility
 async function getGateway() {
-    const wallet = await Wallets.newFileSystemWallet(path.join(__dirname, 'wallet'));
-    const gateway = new Gateway();
-    await gateway.connect(ccp, { wallet, identity: 'admin', discovery: { enabled: true, asLocalhost: true } });
-    return gateway;
+    return await gatewayPool.getGateway();
 }
 
 // Error handling middleware
@@ -91,7 +177,13 @@ app.use(metricsMiddleware);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'healthy' });
+    res.status(200).json({ 
+        status: 'healthy',
+        gatewayPool: {
+            poolSize: gatewayPool.pool.length,
+            activeConnections: gatewayPool.activeConnections
+        }
+    });
 });
 
 // Metrics endpoint
@@ -130,9 +222,40 @@ const updateBlockchainStatus = async () => {
 updateBlockchainStatus();
 setInterval(updateBlockchainStatus, 5 * 60 * 1000);
 
+// Helper function to record threat data to blockchain
+async function recordToBlockchain(cid, results) {
+    try {
+        return await withGateway(async (gateway) => {
+            const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
+            const contract = network.getContract(process.env.CONTRACT_NAME);
+            
+            // Create a summary of the threats
+            const threatSummary = results.map(r => ({
+                level: r.threat_level,
+                confidence: r.confidence,
+                timestamp: new Date().toISOString()
+            }));
+            
+            // Submit transaction to record the threat
+            await contract.submitTransaction(
+                'recordThreat', 
+                cid, 
+                JSON.stringify(threatSummary)
+            );
+            
+            logger.info(`Successfully recorded threat to blockchain, IPFS CID: ${cid}`);
+            return true;
+        });
+    } catch (error) {
+        logger.error(`Blockchain recording error: ${error}`);
+        throw error;
+    }
+}
+
 // AI service integration
 app.post('/api/analyze', 
     [
+        analyzeRateLimiter,
         body('data').isArray().withMessage('Data must be an array of objects'),
         validate
     ],
@@ -165,6 +288,9 @@ app.post('/api/analyze',
             
             // Record threats to blockchain and IPFS if needed
             if (results.some(result => result.threat_level !== "Normal")) {
+                let cid = null;
+                
+                // Try to store on IPFS, but continue if it fails
                 try {
                     // Store the raw data on IPFS
                     const ipfsResult = await ipfs.add(JSON.stringify({
@@ -173,20 +299,24 @@ app.post('/api/analyze',
                         timestamp: new Date().toISOString()
                     }));
                     
-                    const cid = ipfsResult.cid.toString();
+                    cid = ipfsResult.cid.toString();
                     logger.info(`Stored threat data on IPFS with CID: ${cid}`);
-                    
-                    // Record to blockchain (attempt only, don't block the response)
-                    // This is run asynchronously to not delay the response
-                    recordToBlockchain(cid, results).catch(err => {
-                        logger.error(`Failed to record to blockchain: ${err}`);
-                    });
                     
                     // Include the IPFS reference in the response
                     aiResponse.data.ipfs_cid = cid;
                 } catch (ipfsError) {
                     logger.error(`Failed to store on IPFS: ${ipfsError}`);
-                    // Continue without IPFS storage
+                    // Create a fallback CID value to indicate IPFS storage failed
+                    cid = 'ipfs-storage-failed-' + Date.now();
+                    aiResponse.data.ipfs_storage_error = true;
+                }
+                
+                // Record to blockchain (attempt only, don't block the response)
+                // This is run asynchronously to not delay the response
+                if (cid) {
+                    recordToBlockchain(cid, results).catch(err => {
+                        logger.error(`Failed to record to blockchain: ${err}`);
+                    });
                 }
             }
             
@@ -199,42 +329,8 @@ app.post('/api/analyze',
     }
 );
 
-// Helper function to record threat data to blockchain
-async function recordToBlockchain(cid, results) {
-    let gateway;
-    try {
-        gateway = await getGateway();
-        const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
-        const contract = network.getContract(process.env.CONTRACT_NAME);
-        
-        // Create a summary of the threats
-        const threatSummary = results.map(r => ({
-            level: r.threat_level,
-            confidence: r.confidence,
-            timestamp: new Date().toISOString()
-        }));
-        
-        // Submit transaction to record the threat
-        await contract.submitTransaction(
-            'recordThreat', 
-            cid, 
-            JSON.stringify(threatSummary)
-        );
-        
-        logger.info(`Successfully recorded threat to blockchain, IPFS CID: ${cid}`);
-        return true;
-    } catch (error) {
-        logger.error(`Blockchain recording error: ${error}`);
-        throw error;
-    } finally {
-        if (gateway) {
-            gateway.disconnect();
-        }
-    }
-}
-
 // AI metrics endpoint for frontend
-app.get('/api/ai-metrics', async (req, res) => {
+app.get('/api/ai-metrics', metricsRateLimiter, async (req, res) => {
     try {
         // Get metrics from AI service's formatted endpoint
         logger.info(`Fetching metrics from AI service at ${process.env.AI_SERVICE_URL}/api/metrics`);
@@ -280,6 +376,7 @@ app.get('/api/ai-metrics', async (req, res) => {
 // Model training endpoint
 app.post('/api/train-model',
     [
+        trainingRateLimiter,
         body('epochs').isInt({ min: 1, max: 1000 }).withMessage('Epochs must be between 1 and 1000'),
         body('batchSize').isInt({ min: 1, max: 512 }).withMessage('Batch size must be between 1 and 512'),
         body('learningRate').isFloat({ min: 0.0001, max: 0.1 }).withMessage('Learning rate must be between 0.0001 and 0.1'),
@@ -315,7 +412,7 @@ app.post('/api/train-model',
 );
 
 // Model training status endpoint
-app.get('/api/train-model/:jobId', async (req, res) => {
+app.get('/api/train-model/:jobId', trainingRateLimiter, async (req, res) => {
     try {
         const { jobId } = req.params;
         
@@ -332,6 +429,7 @@ app.get('/api/train-model/:jobId', async (req, res) => {
 // Routes
 app.post('/api/events', 
     [
+        eventsRateLimiter,
         body('id').isString().withMessage('ID must be a string'),
         body('timestamp').isISO8601().withMessage('Timestamp must be a valid ISO8601 date'),
         body('type').isString().withMessage('Type must be a string'),
@@ -339,87 +437,81 @@ app.post('/api/events',
         validate
     ],
     async (req, res) => {
-        let gateway;
         try {
             const { id, timestamp, type, details } = req.body;
             
-            // Upload details to IPFS
-            const ipfsResult = await ipfs.add(JSON.stringify(details));
-            const ipfsHash = ipfsResult.path;
+            // Upload details to IPFS with proper error handling
+            let ipfsHash;
+            try {
+                const ipfsResult = await ipfs.add(JSON.stringify(details));
+                ipfsHash = ipfsResult.path;
+                logger.info(`Stored details on IPFS with hash: ${ipfsHash}`);
+            } catch (ipfsError) {
+                logger.error(`IPFS storage error: ${ipfsError}`);
+                // Continue without IPFS storage, using a fallback
+                ipfsHash = 'ipfs-storage-unavailable';
+            }
 
             // Store event on Fabric
-            gateway = await getGateway();
-            const network = await gateway.getNetwork('neurashield-channel');
-            const contract = network.getContract('neurashield');
-
-            await contract.submitTransaction('LogEvent', id, timestamp, type, details, ipfsHash);
+            await withGateway(async (gateway) => {
+                const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
+                const contract = network.getContract(process.env.CONTRACT_NAME);
+                
+                await contract.submitTransaction('LogEvent', id, timestamp, type, JSON.stringify(details), ipfsHash);
+            });
             
             logger.info(`Event logged successfully: ${id}`);
-            res.json({ success: true, message: 'Event logged successfully', ipfsHash });
+            res.json({ 
+                success: true, 
+                message: 'Event logged successfully', 
+                ipfsHash,
+                ipfs_storage_success: ipfsHash !== 'ipfs-storage-unavailable'
+            });
         } catch (error) {
             logger.error(`Failed to log event: ${error}`);
             res.status(500).json({ error: error.message });
-        } finally {
-            if (gateway) {
-                try {
-                    gateway.disconnect();
-                } catch (err) {
-                    logger.error(`Error disconnecting gateway: ${err}`);
-                }
-            }
         }
     }
 );
 
 app.get('/api/events/:id', 
     [
+        eventsRateLimiter,
         param('id').isString().withMessage('ID must be a string'),
         validate
     ],
     async (req, res) => {
-        let gateway;
         try {
-            gateway = await getGateway();
-            const network = await gateway.getNetwork('neurashield-channel');
-            const contract = network.getContract('neurashield');
-
-            const result = await contract.evaluateTransaction('QueryEvent', req.params.id);
-            res.json(JSON.parse(result.toString()));
+            const result = await withGateway(async (gateway) => {
+                const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
+                const contract = network.getContract(process.env.CONTRACT_NAME);
+                
+                const resultBuffer = await contract.evaluateTransaction('QueryEvent', req.params.id);
+                return JSON.parse(resultBuffer.toString());
+            });
+            
+            res.json(result);
         } catch (error) {
             logger.error(`Failed to query event: ${error}`);
             res.status(500).json({ error: error.message });
-        } finally {
-            if (gateway) {
-                try {
-                    gateway.disconnect();
-                } catch (err) {
-                    logger.error(`Error disconnecting gateway: ${err}`);
-                }
-            }
         }
     }
 );
 
-app.get('/api/events', async (req, res) => {
-    let gateway;
+app.get('/api/events', eventsRateLimiter, async (req, res) => {
     try {
-        gateway = await getGateway();
-        const network = await gateway.getNetwork('neurashield-channel');
-        const contract = network.getContract('neurashield');
-
-        const result = await contract.evaluateTransaction('QueryAllEvents');
-        res.json(JSON.parse(result.toString()));
+        const result = await withGateway(async (gateway) => {
+            const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
+            const contract = network.getContract(process.env.CONTRACT_NAME);
+            
+            const resultBuffer = await contract.evaluateTransaction('QueryAllEvents');
+            return JSON.parse(resultBuffer.toString());
+        });
+        
+        res.json(result);
     } catch (error) {
         logger.error(`Failed to query all events: ${error}`);
         res.status(500).json({ error: error.message });
-    } finally {
-        if (gateway) {
-            try {
-                gateway.disconnect();
-            } catch (err) {
-                logger.error(`Error disconnecting gateway: ${err}`);
-            }
-        }
     }
 });
 
