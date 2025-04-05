@@ -1,0 +1,37 @@
+{
+  "name": "neurashield",
+  "version": "1.0.0",
+  "description": "Comprehensive cybersecurity platform with AI and blockchain technology",
+  "main": "index.js",
+  "scripts": {
+    "start": "docker-compose up",
+    "stop": "docker-compose down",
+    "test": "jest",
+    "test:websocket": "node backend/tests/websocket.test.js",
+    "test:performance:ai-model": "node backend/tests/performance/ai-model.test.js",
+    "test:security:sql-injection": "node backend/tests/security/sql-injection.test.js",
+    "test:load:api": "node backend/tests/load/api.test.js",
+    "system-test": "bash scripts/system-test.sh",
+    "perf-test": "bash scripts/performance-benchmark.sh",
+    "security-test": "bash scripts/security-audit.sh",
+    "uat": "bash scripts/user-acceptance-test.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/neurashield.git"
+  },
+  "keywords": [
+    "cybersecurity",
+    "ai",
+    "blockchain",
+    "threat-detection"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+} 
