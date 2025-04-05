@@ -146,7 +146,6 @@ NeuraShield is a comprehensive cybersecurity platform that leverages AI and bloc
 
 ### 2. Deployment [WIP]
 - [x] Production environment setup
-- [x] CI/CD pipeline implementation
 - [ ] Monitoring system deployment [WIP]
   - Prometheus configuration complete
   - Grafana dashboards implemented
