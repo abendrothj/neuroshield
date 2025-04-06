@@ -1,0 +1,5 @@
+# Run backup daily at 2 AM
+0 2 * * * /bin/sh /backup-recovery.sh --backup > /proc/1/fd/1 2>/proc/1/fd/2
+
+# Run verification of backups weekly on Sunday at 3 AM
+0 3 * * 0 /bin/sh /backup-recovery.sh --verify > /proc/1/fd/1 2>/proc/1/fd/2 

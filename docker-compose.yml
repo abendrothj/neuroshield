@@ -190,6 +190,29 @@ services:
         limits:
           memory: 256M
 
+  backup:
+    image: alpine:latest
+    volumes:
+      - ./scripts/backup-recovery.sh:/backup-recovery.sh
+      - ./scripts/crontab:/etc/crontabs/root
+      - backup-data:/backups
+      - ipfs-data:/data/ipfs:ro
+      - ai-model-data:/app/ai_models/models:ro
+      - backend-data:/app/backend/data:ro
+      - prometheus-data:/prometheus:ro
+      - grafana-data:/var/lib/grafana:ro
+    environment:
+      - BACKUP_DIR=/backups
+      - RETENTION_DAYS=30
+    command: ["crond", "-f", "-d", "8"]
+    restart: unless-stopped
+    networks:
+      - neurashield-network
+    depends_on:
+      - backend
+      - ai-service
+      - ipfs
+
 volumes:
   ipfs-data:
   prometheus-data:
@@ -197,6 +220,7 @@ volumes:
   alertmanager-data:
   ai-model-data:
   backend-data:
+  backup-data:
 
 networks:
   neurashield-network:

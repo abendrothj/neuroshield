@@ -1,0 +1,350 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: restore-service
+  namespace: neurashield
+  labels:
+    app: restore-service
+spec:
+  selector:
+    app: restore-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restore-service
+  namespace: neurashield
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restore-service
+  template:
+    metadata:
+      labels:
+        app: restore-service
+    spec:
+      serviceAccountName: backup-sa
+      containers:
+      - name: restore-service
+        image: bitnami/nginx:latest
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: backup-script
+          mountPath: /scripts
+        - name: nginx-config
+          mountPath: /opt/bitnami/nginx/conf/server_blocks
+        - name: backup-volume
+          mountPath: /backups
+          readOnly: true
+        - name: www-data
+          mountPath: /opt/bitnami/nginx/html
+      volumes:
+      - name: backup-script
+        configMap:
+          name: backup-script
+          defaultMode: 0755
+      - name: nginx-config
+        configMap:
+          name: restore-service-config
+      - name: backup-volume
+        persistentVolumeClaim:
+          claimName: backup-pvc
+      - name: www-data
+        configMap:
+          name: restore-service-www
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: restore-service-config
+  namespace: neurashield
+data:
+  restore.conf: |
+    server {
+      listen 8080;
+      server_name localhost;
+      
+      root /opt/bitnami/nginx/html;
+      index index.html;
+      
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+      
+      location /api/backups {
+        add_header Content-Type application/json;
+        return 200 '{"backups": [$(find /backups -maxdepth 1 -type d -name "20*" | sort -r | xargs -I{} basename {} | sed "s/^/\"/g" | sed "s/$/\",/g" | sed "$ s/,$//" | tr "\n" " ")]}';
+      }
+      
+      location /api/restore {
+        if ($request_method != POST) {
+          return 405;
+        }
+        
+        client_body_buffer_size 1M;
+        client_max_body_size 1M;
+        
+        content_by_lua_block {
+          local cjson = require "cjson"
+          local args = ngx.req.get_post_args()
+          
+          if not args or not args.timestamp or not args.components then
+            ngx.status = 400
+            ngx.say(cjson.encode({error = "Missing required parameters"}))
+            return
+          end
+          
+          local timestamp = args.timestamp
+          local components = args.components
+          
+          if not string.match(timestamp, "^%d%d%d%d%d%d%d%d_%d%d%d%d%d%d$") then
+            ngx.status = 400
+            ngx.say(cjson.encode({error = "Invalid timestamp format"}))
+            return
+          end
+          
+          local cmd = "/scripts/backup-recovery.sh --restore --timestamp " .. timestamp .. " --components " .. components
+          local handle = io.popen(cmd)
+          local result = handle:read("*a")
+          handle:close()
+          
+          ngx.say(cjson.encode({success = true, result = result}))
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: restore-service-www
+  namespace: neurashield
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>NeuraShield System Restore</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          margin: 0;
+          padding: 20px;
+          color: #333;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        h1 {
+          color: #2c3e50;
+          border-bottom: 2px solid #3498db;
+          padding-bottom: 10px;
+        }
+        .card {
+          background: #f9f9f9;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+          padding: 20px;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .warning {
+          background-color: #fff3cd;
+          border-color: #ffeeba;
+          color: #856404;
+        }
+        button {
+          background-color: #3498db;
+          color: white;
+          border: none;
+          padding: 10px 15px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        button:hover {
+          background-color: #2980b9;
+        }
+        button:disabled {
+          background-color: #95a5a6;
+          cursor: not-allowed;
+        }
+        select, .checkbox-group {
+          margin: 10px 0;
+          padding: 8px;
+          width: 100%;
+          max-width: 400px;
+        }
+        .checkbox-container {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin: 10px 0;
+        }
+        .checkbox-item {
+          display: flex;
+          align-items: center;
+          margin-right: 15px;
+        }
+        #status {
+          margin-top: 20px;
+          padding: 15px;
+          border-radius: 5px;
+        }
+        .success {
+          background-color: #d4edda;
+          border-color: #c3e6cb;
+          color: #155724;
+        }
+        .error {
+          background-color: #f8d7da;
+          border-color: #f5c6cb;
+          color: #721c24;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>NeuraShield System Restore</h1>
+      
+      <div class="card warning">
+        <h3>⚠️ WARNING: System Restore Operation</h3>
+        <p>This interface allows you to restore system components from backups. This is a potentially destructive operation and should only be used in recovery scenarios.</p>
+        <p><strong>All current data for selected components will be replaced with backup data.</strong></p>
+      </div>
+      
+      <div class="card">
+        <h3>Available Backups</h3>
+        <select id="backupSelect">
+          <option value="">Loading backups...</option>
+        </select>
+        
+        <h3>Components to Restore</h3>
+        <div class="checkbox-container">
+          <div class="checkbox-item">
+            <input type="checkbox" id="database" value="database" checked>
+            <label for="database">Database</label>
+          </div>
+          <div class="checkbox-item">
+            <input type="checkbox" id="models" value="models" checked>
+            <label for="models">AI Models</label>
+          </div>
+          <div class="checkbox-item">
+            <input type="checkbox" id="blockchain" value="blockchain" checked>
+            <label for="blockchain">Blockchain</label>
+          </div>
+          <div class="checkbox-item">
+            <input type="checkbox" id="ipfs" value="ipfs" checked>
+            <label for="ipfs">IPFS</label>
+          </div>
+          <div class="checkbox-item">
+            <input type="checkbox" id="configs" value="configs" checked>
+            <label for="configs">Configurations</label>
+          </div>
+        </div>
+        
+        <button id="restoreButton" disabled>Restore System</button>
+      </div>
+      
+      <div id="status" style="display: none;"></div>
+      
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          const backupSelect = document.getElementById('backupSelect');
+          const restoreButton = document.getElementById('restoreButton');
+          const statusDiv = document.getElementById('status');
+          const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+          
+          // Fetch available backups
+          fetch('/api/backups')
+            .then(response => response.json())
+            .then(data => {
+              backupSelect.innerHTML = '';
+              if (data.backups && data.backups.length > 0) {
+                data.backups.forEach(backup => {
+                  const option = document.createElement('option');
+                  option.value = backup;
+                  const date = backup.replace('_', ' ').replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+                  option.textContent = `Backup from ${date}`;
+                  backupSelect.appendChild(option);
+                });
+                restoreButton.disabled = false;
+              } else {
+                const option = document.createElement('option');
+                option.textContent = 'No backups available';
+                backupSelect.appendChild(option);
+                restoreButton.disabled = true;
+              }
+            })
+            .catch(error => {
+              console.error('Error fetching backups:', error);
+              const option = document.createElement('option');
+              option.textContent = 'Error loading backups';
+              backupSelect.appendChild(option);
+              restoreButton.disabled = true;
+            });
+          
+          // Handle restore button click
+          restoreButton.addEventListener('click', function() {
+            const selectedBackup = backupSelect.value;
+            if (!selectedBackup) {
+              showStatus('Please select a backup to restore', 'error');
+              return;
+            }
+            
+            const selectedComponents = Array.from(checkboxes)
+              .filter(checkbox => checkbox.checked)
+              .map(checkbox => checkbox.value);
+            
+            if (selectedComponents.length === 0) {
+              showStatus('Please select at least one component to restore', 'error');
+              return;
+            }
+            
+            if (!confirm(`WARNING: You are about to restore the following components from backup ${selectedBackup}:\n\n${selectedComponents.join(', ')}\n\nThis will overwrite current data. Are you absolutely sure?`)) {
+              return;
+            }
+            
+            restoreButton.disabled = true;
+            showStatus('Restoring system from backup, please wait...', '');
+            
+            const formData = new FormData();
+            formData.append('timestamp', selectedBackup);
+            formData.append('components', selectedComponents.join(','));
+            
+            fetch('/api/restore', {
+              method: 'POST',
+              body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                showStatus(`Restore operation completed successfully. ${data.result}`, 'success');
+              } else {
+                showStatus(`Error: ${data.error || 'Unknown error occurred'}`, 'error');
+              }
+              restoreButton.disabled = false;
+            })
+            .catch(error => {
+              console.error('Error during restore:', error);
+              showStatus('Error communicating with restore service', 'error');
+              restoreButton.disabled = false;
+            });
+          });
+          
+          function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+            statusDiv.className = type;
+          }
+        });
+      </script>
+    </body>
+    </html> 
