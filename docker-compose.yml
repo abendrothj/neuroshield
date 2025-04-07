@@ -25,6 +25,7 @@ services:
     networks:
       - neurashield-network
     restart: unless-stopped
+    user: "1000:1000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -71,18 +72,19 @@ services:
       - THREAT_THRESHOLD=0.8
       - API_TIMEOUT=30
       - MAX_BATCH_SIZE=100
+      - CUDA_VISIBLE_DEVICES=-1
+      - LOG_DIR=/logs
     volumes:
-      - ai-model-data:/app/ai_models/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - type: volume
+        source: ai-model-data
+        target: /app/ai_models/models
+      - type: volume
+        source: ai-logs
+        target: /logs
     networks:
       - neurashield-network
     restart: unless-stopped
+    user: "1000:1000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
@@ -101,6 +103,7 @@ services:
     networks:
       - neurashield-network
     restart: unless-stopped
+    user: "1000:1000"
     healthcheck:
       test: ["CMD", "ipfs", "id"]
       interval: 30s
@@ -175,7 +178,7 @@ services:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
     ports:
-      - "8080:8080"
+      - "8082:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -219,6 +222,7 @@ volumes:
   grafana-data:
   alertmanager-data:
   ai-model-data:
+  ai-logs:
   backend-data:
   backup-data:
 

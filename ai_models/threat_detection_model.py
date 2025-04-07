@@ -11,9 +11,14 @@ import json
 from datetime import datetime
 import time
 
+# Get log directory from environment variable or use current directory
+LOG_DIR = os.environ.get('LOG_DIR', '.')
+os.makedirs(LOG_DIR, exist_ok=True)
+log_file_path = os.path.join(LOG_DIR, 'threat_detection_model.log')
+
 # Make metrics optional
 try:
-    from metrics import (
+    from ai_models.metrics import (
         start_metrics_server,
         update_model_metrics,
         record_prediction
@@ -28,7 +33,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('threat_detection_model.log'),
+        logging.FileHandler(log_file_path),
         logging.StreamHandler()
     ]
 )

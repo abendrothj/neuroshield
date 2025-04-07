@@ -5,6 +5,12 @@ Main entry point for the NeuraShield AI service.
 import os
 import uvicorn
 import logging
+
+# Get log directory from environment variable or use current directory
+LOG_DIR = os.environ.get('LOG_DIR', '.')
+os.makedirs(LOG_DIR, exist_ok=True)
+log_file_path = os.path.join(LOG_DIR, 'ai_service.log')
+
 from ai_models.metrics import start_metrics_server
 
 # Configure logging
@@ -12,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('ai_service.log'),
+        logging.FileHandler(log_file_path),
         logging.StreamHandler()
     ]
 )

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, RootModel
 import uvicorn
 import logging
 import numpy as np
@@ -7,8 +7,8 @@ import time
 import os
 import gc
 from dotenv import load_dotenv
-from threat_detection_model import ThreatDetectionModel
-from metrics import update_model_metrics, record_prediction, record_batch_size, update_gpu_memory, record_prediction_result, set_model_version
+from ai_models.threat_detection_model import ThreatDetectionModel
+from ai_models.metrics import update_model_metrics, record_prediction, record_batch_size, update_gpu_memory, record_prediction_result, set_model_version
 import tensorflow as tf
 from typing import List, Optional, Dict, Any, Union
 import psutil
@@ -16,12 +16,17 @@ import psutil
 # Load environment variables
 load_dotenv()
 
+# Get log directory from environment variable or use current directory
+LOG_DIR = os.environ.get('LOG_DIR', '.')
+os.makedirs(LOG_DIR, exist_ok=True)
+log_file_path = os.path.join(LOG_DIR, 'api.log')
+
 # Configure logging
 logging.basicConfig(
     level=os.getenv('LOG_LEVEL', 'INFO'),
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('api.log'),
+        logging.FileHandler(log_file_path),
         logging.StreamHandler()
     ]
 )
@@ -45,13 +50,13 @@ model_state = {
 }
 
 # Input data model with validation
-class AnalysisRequestItem(BaseModel):
+class AnalysisRequestItem(RootModel):
     model_config = {"protected_namespaces": ()}
     # Each data item must be a dict of key-value pairs
     # Keys don't matter, but we need to validate the values are numeric
-    __root__: Dict[str, Union[float, int]]
+    root: Dict[str, Union[float, int]]
     
-    @validator('__root__')
+    @validator('root')
     def check_values(cls, v):
         # Check that we have the expected number of features
         expected_features = model_state["input_shape"]
