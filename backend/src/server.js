@@ -8,18 +8,45 @@ const rateLimit = require('express-rate-limit');
 const { body, param, validationResult } = require('express-validator');
 const winston = require('winston');
 const { metricsApp, httpRequestDuration, httpRequestsTotal, blockchainSyncStatus, modelAccuracy } = require('./metrics');
+const helmet = require('helmet');
 require('dotenv').config();
 
-// Configure logging
+// Setup production logging
 const logger = winston.createLogger({
-    level: 'info',
+    level: process.env.LOG_LEVEL || 'info',
     format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.json()
+        process.env.NODE_ENV === 'production' 
+            ? winston.format.json()
+            : winston.format.printf(({ level, message, timestamp }) => {
+                return `${timestamp} ${level}: ${message}`;
+            })
     ),
+    defaultMeta: { service: 'neurashield-backend' },
     transports: [
-        new winston.transports.File({ filename: 'error.log', level: 'error' }),
-        new winston.transports.File({ filename: 'combined.log' })
+        new winston.transports.Console(),
+        new winston.transports.File({ 
+            filename: 'logs/error.log', 
+            level: 'error',
+            // Don't log sensitive data
+            format: winston.format.combine(
+                winston.format.timestamp(),
+                winston.format.json(),
+                winston.format(info => {
+                    if (info.password || info.token || info.secret) {
+                        info.password = info.password ? '[REDACTED]' : undefined;
+                        info.token = info.token ? '[REDACTED]' : undefined;
+                        info.secret = info.secret ? '[REDACTED]' : undefined;
+                    }
+                    return info;
+                })()
+            )
+        }),
+        new winston.transports.File({ filename: 'logs/combined.log' })
+    ],
+    // Handle uncaught exceptions but don't expose them in production
+    exceptionHandlers: [
+        new winston.transports.File({ filename: 'logs/exceptions.log' })
     ]
 });
 
@@ -32,38 +59,20 @@ if (process.env.NODE_ENV !== 'production') {
 const app = express();
 app.use(express.json());
 
-// Rate limiting
-const limiter = rateLimit({
+// Add security middleware
+app.use(helmet());
+
+// Add rate limiting
+const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100 // limit each IP to 100 requests per windowMs
+    max: 100, // Limit each IP to 100 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: 'Too many requests from this IP, please try again after 15 minutes'
 });
 
-// Specific rate limiters for different operations
-const analyzeRateLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 20, // limit each IP to 20 requests per windowMs
-    message: 'Too many analysis requests, please try again later'
-});
-
-const metricsRateLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 30, // limit each IP to 30 requests per windowMs
-    message: 'Too many metrics requests, please try again later'
-});
-
-const eventsRateLimiter = rateLimit({
-    windowMs: 10 * 60 * 1000, // 10 minutes
-    max: 50, // limit each IP to 50 requests per windowMs
-    message: 'Too many event requests, please try again later'
-});
-
-const trainingRateLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 60 minutes
-    max: 5, // limit each IP to 5 requests per hour
-    message: 'Too many training requests, please try again later'
-});
-
-app.use(limiter); // Apply general rate limiting to all endpoints not specifically limited
+// Apply rate limiting to all API routes
+app.use('/api', apiLimiter);
 
 // IPFS configuration
 const ipfs = create({ url: process.env.IPFS_URL || 'http://localhost:5001' });
@@ -139,15 +148,6 @@ async function withGateway(callback) {
 async function getGateway() {
     return await gatewayPool.getGateway();
 }
-
-// Error handling middleware
-const errorHandler = (err, req, res, next) => {
-    logger.error('Error:', err);
-    res.status(500).json({
-        error: 'Internal Server Error',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
-    });
-};
 
 // Input validation middleware
 const validate = (req, res, next) => {
@@ -255,7 +255,7 @@ async function recordToBlockchain(cid, results) {
 // AI service integration
 app.post('/api/analyze', 
     [
-        analyzeRateLimiter,
+        apiLimiter,
         body('data').isArray().withMessage('Data must be an array of objects'),
         validate
     ],
@@ -330,7 +330,7 @@ app.post('/api/analyze',
 );
 
 // AI metrics endpoint for frontend
-app.get('/api/ai-metrics', metricsRateLimiter, async (req, res) => {
+app.get('/api/ai-metrics', apiLimiter, async (req, res) => {
     try {
         // Get metrics from AI service's formatted endpoint
         logger.info(`Fetching metrics from AI service at ${process.env.AI_SERVICE_URL}/api/metrics`);
@@ -376,7 +376,7 @@ app.get('/api/ai-metrics', metricsRateLimiter, async (req, res) => {
 // Model training endpoint
 app.post('/api/train-model',
     [
-        trainingRateLimiter,
+        apiLimiter,
         body('epochs').isInt({ min: 1, max: 1000 }).withMessage('Epochs must be between 1 and 1000'),
         body('batchSize').isInt({ min: 1, max: 512 }).withMessage('Batch size must be between 1 and 512'),
         body('learningRate').isFloat({ min: 0.0001, max: 0.1 }).withMessage('Learning rate must be between 0.0001 and 0.1'),
@@ -412,7 +412,7 @@ app.post('/api/train-model',
 );
 
 // Model training status endpoint
-app.get('/api/train-model/:jobId', trainingRateLimiter, async (req, res) => {
+app.get('/api/train-model/:jobId', apiLimiter, async (req, res) => {
     try {
         const { jobId } = req.params;
         
@@ -429,7 +429,7 @@ app.get('/api/train-model/:jobId', trainingRateLimiter, async (req, res) => {
 // Routes
 app.post('/api/events', 
     [
-        eventsRateLimiter,
+        apiLimiter,
         body('id').isString().withMessage('ID must be a string'),
         body('timestamp').isISO8601().withMessage('Timestamp must be a valid ISO8601 date'),
         body('type').isString().withMessage('Type must be a string'),
@@ -476,7 +476,7 @@ app.post('/api/events',
 
 app.get('/api/events/:id', 
     [
-        eventsRateLimiter,
+        apiLimiter,
         param('id').isString().withMessage('ID must be a string'),
         validate
     ],
@@ -498,7 +498,7 @@ app.get('/api/events/:id',
     }
 );
 
-app.get('/api/events', eventsRateLimiter, async (req, res) => {
+app.get('/api/events', apiLimiter, async (req, res) => {
     try {
         const result = await withGateway(async (gateway) => {
             const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
@@ -515,8 +515,24 @@ app.get('/api/events', eventsRateLimiter, async (req, res) => {
     }
 });
 
-// Apply error handling middleware
-app.use(errorHandler);
+// Add secure error handler (to replace any existing error handlers)
+app.use((err, req, res, next) => {
+    // Log detailed error for internal use
+    logger.error('Server error', { 
+        error: process.env.NODE_ENV === 'production' ? err.message : err.stack,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+        user: req.user ? req.user.id : 'anonymous'
+    });
+
+    // Send safe response to client
+    res.status(err.status || 500).json({ 
+        error: process.env.NODE_ENV === 'production' 
+            ? 'An unexpected error occurred' 
+            : err.message
+    });
+});
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

@@ -16,69 +16,79 @@ The system consists of three main components:
 
 ## Getting Started
 
+For detailed setup instructions, please refer to [SETUP.md](SETUP.md).
+
 ### Prerequisites
 
-- Docker and Docker Compose
+- Docker and Docker Compose (latest version with `docker compose` command)
 - Node.js 18+ (for local development)
 - Python 3.9+ (for local AI model development)
+- bash shell
 
-### Running the Application
-
-#### Using Docker Compose (Recommended)
+### Quick Start
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/neurashield.git
 cd neurashield
 
-# Start the entire stack
-docker-compose up
+# Make scripts executable
+bash scripts/make-scripts-executable.sh
+
+# Set up development environment
+npm run setup:dev
+
+# Start the development environment
+npm run start:dev
 
 # Access the application at http://localhost:3000
 ```
 
-#### Local Development
+### Development & Production Modes
 
-```bash
-# Backend
-cd backend
-npm install
-npm run dev
+We support both development and production modes:
 
-# Frontend
-cd frontend
-npm install
-npm run dev
-
-# AI Service
-cd ai_models
-pip install -r requirements.txt
-python -m ai_models.main
-```
+- **Development Mode**: `npm run setup:dev` followed by `npm run start:dev`
+- **Production Mode**: `npm run setup:prod` followed by `npm run start:prod`
 
 ## Monitoring
 
 The system includes Prometheus and Grafana for monitoring:
 
 - Prometheus: http://localhost:9090
-- Grafana: http://localhost:3003 (admin/admin)
+- Grafana: http://localhost:3003 (admin/admin in dev mode, secure credentials in production)
 
 ## Kubernetes Deployment
 
 For production deployment, Kubernetes configuration files are provided in the `k8s` directory:
 
 ```bash
-# Apply Kubernetes configurations
-kubectl apply -f k8s/
+# Configure for production
+npm run setup:prod
+
+# Deploy to Kubernetes
+npm run deploy:k8s
 ```
 
-## Environment Variables
+## Testing
 
-Each service requires specific environment variables. Example files are provided:
+The system includes comprehensive testing:
 
-- `backend/.env.example`
-- `frontend/.env.example`
-- AI service uses environment variables in the Kubernetes deployment files
+```bash
+# Run all tests
+npm test
+
+# Run specific test suites
+npm run test:websocket
+npm run test:performance:ai-model
+npm run test:security:sql-injection
+npm run test:load:api
+
+# Run system-wide tests
+npm run system-test
+npm run perf-test
+npm run security-test
+```
 
 ## Project Structure
 
@@ -88,14 +98,11 @@ neurashield/
 ├── backend/                # Express.js server
 ├── ai_models/              # AI threat detection models
 ├── k8s/                    # Kubernetes deployment files
-├── monitoring/             # Prometheus configuration
+├── monitoring/             # Prometheus/Grafana configuration
+├── scripts/                # Helper scripts
 ├── docker-compose.yml      # Docker Compose configuration
 └── Dockerfile              # Multi-stage Dockerfile
 ```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Features
 
@@ -105,15 +112,20 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - 📊 Real-time dashboard with WebSocket updates
 - 🤖 Automated response system
 - 📱 Modern, responsive UI
+- 🔄 Support for both development and production environments
+- 📈 Comprehensive monitoring and logging
+- 🔐 Security-hardened configuration
+- 💾 Database integration with PostgreSQL
+- 🔄 Automated backup and recovery
 
 ## Tech Stack
 
-- **Frontend**: Next.js, React, TailwindCSS
-- **Backend**: Node.js, Express
+- **Frontend**: Next.js 14, React, TypeScript, TailwindCSS
+- **Backend**: Node.js 18.x, Express, PostgreSQL
 - **Blockchain**: Hyperledger Fabric
 - **Storage**: IPFS
-- **AI/ML**: TensorFlow/PyTorch
-- **Infrastructure**: Docker, Kubernetes
+- **AI/ML**: TensorFlow/PyTorch, FastAPI
+- **Infrastructure**: Docker, Kubernetes, Prometheus, Grafana
 
 ## Contributing
 
@@ -122,6 +134,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

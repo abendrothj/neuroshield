@@ -3,31 +3,39 @@ kind: Ingress
 metadata:
   name: neurashield-ingress
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
 spec:
+  tls:
+  - hosts:
+    - app.neurashield.com
+    - api.neurashield.com
+    secretName: neurashield-tls
   rules:
-  - host: neurashield.example.com
+  - host: app.neurashield.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: neurashield-frontend
+            name: frontend-service
             port:
-              number: 80
-      - path: /api
+              number: 3000
+  - host: api.neurashield.com
+    http:
+      paths:
+      - path: /
         pathType: Prefix
         backend:
           service:
-            name: neurashield-backend
+            name: backend-service
             port:
-              number: 3001
-      - path: /ai
-        pathType: Prefix
-        backend:
-          service:
-            name: neurashield-ai
-            port:
-              number: 3002 
+              number: 3001 

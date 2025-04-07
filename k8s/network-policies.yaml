@@ -9,6 +9,7 @@ spec:
       component: frontend
   policyTypes:
   - Ingress
+  - Egress
   ingress:
   - from:
     - namespaceSelector:
@@ -17,6 +18,15 @@ spec:
     ports:
     - protocol: TCP
       port: 3000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: neurashield
+          component: backend
+    ports:
+    - protocol: TCP
+      port: 3001
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -36,6 +46,9 @@ spec:
         matchLabels:
           app: neurashield
           component: frontend
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
     ports:
     - protocol: TCP
       port: 3001
@@ -47,7 +60,15 @@ spec:
           component: ai
     ports:
     - protocol: TCP
-      port: 3002
+      port: 5000
+  - to:
+    - podSelector:
+        matchLabels:
+          app: neurashield
+          component: ipfs
+    ports:
+    - protocol: TCP
+      port: 5001
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -60,6 +81,35 @@ spec:
       component: ai
   policyTypes:
   - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: neurashield
+          component: backend
+    - namespaceSelector:
+        matchLabels:
+          name: prometheus
+    ports:
+    - protocol: TCP
+      port: 5000
+    - protocol: TCP
+      port: 8000
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: neurashield-ipfs-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: neurashield
+      component: ipfs
+  policyTypes:
+  - Ingress
+  - Egress
   ingress:
   - from:
     - podSelector:
@@ -68,4 +118,5 @@ spec:
           component: backend
     ports:
     - protocol: TCP
-      port: 3002 
+      port: 5001
+  egress: [] 

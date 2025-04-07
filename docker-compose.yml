@@ -8,7 +8,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-development}
       - PORT=3001
       - AI_SERVICE_URL=http://ai-service:5000
       - IPFS_URL=http://ipfs:5001
@@ -16,16 +16,24 @@ services:
       - CONTRACT_NAME=neurashield
       - ORGANIZATION_ID=Org1
       - USER_ID=admin
-      - LOG_LEVEL=info
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=neurashield
+      - DB_USER=${DB_USER:-neurauser}
+      - DB_PASSWORD=${DB_PASSWORD:-defaultpassword}
     volumes:
+      - ./backend:/app/backend
       - backend-data:/app/backend/data
+      - ./backend/logs:/app/backend/logs
     depends_on:
       - ai-service
       - ipfs
+      - postgres
     networks:
       - neurashield-network
     restart: unless-stopped
-    user: "1000:1000"
+    user: ${RUN_AS_ROOT:-appuser}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -40,8 +48,15 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://backend:3001
+      - NODE_ENV=${NODE_ENV:-development}
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
+      - NEXT_PUBLIC_AI_SERVICE_URL=http://localhost:5000
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+      - /app/frontend/.next
+    command: sh -c "if [ \"${NODE_ENV:-development}\" = \"development\" ]; then npx next dev; else npx next start; fi"
     depends_on:
       - backend
     networks:
@@ -129,8 +144,18 @@ services:
     ports:
       - "3003:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SERVER_ROOT_URL=https://monitoring.neurashield.com
+      - GF_SECURITY_ALLOW_EMBEDDING=false
+      - GF_SECURITY_COOKIE_SECURE=true
+      - GF_SECURITY_STRICT_TRANSPORT_SECURITY=true
+      - GF_SECURITY_STRICT_TRANSPORT_SECURITY_MAX_AGE_SECONDS=15552000
+      - GF_SECURITY_STRICT_TRANSPORT_SECURITY_PRELOAD=true
+      - GF_SECURITY_CONTENT_SECURITY_POLICY=true
+      - GF_SECURITY_X_CONTENT_TYPE_OPTIONS=true
+      - GF_SECURITY_X_XSS_PROTECTION=true
     volumes:
       - ./monitoring/grafana-provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
@@ -139,6 +164,7 @@ services:
     networks:
       - neurashield-network
     restart: unless-stopped
+    user: "472:472"
 
   alert-manager:
     image: prom/alertmanager:latest
@@ -193,6 +219,28 @@ services:
         limits:
           memory: 256M
 
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${DB_USER:-neurauser}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-defaultpassword}
+      - POSTGRES_DB=neurashield
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - neurashield-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-neurauser} -d neurashield"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    user: "postgres"
+
   backup:
     image: alpine:latest
     volumes:
@@ -204,14 +252,20 @@ services:
       - backend-data:/app/backend/data:ro
       - prometheus-data:/prometheus:ro
       - grafana-data:/var/lib/grafana:ro
+      - postgres-data:/var/lib/postgresql/data:ro
     environment:
       - BACKUP_DIR=/backups
       - RETENTION_DAYS=30
+      - PGDUMP_HOST=postgres
+      - PGDUMP_USER=${DB_USER:-neurauser}
+      - PGDUMP_PASSWORD=${DB_PASSWORD:-defaultpassword}
+      - PGDUMP_DB=neurashield
     command: ["crond", "-f", "-d", "8"]
     restart: unless-stopped
     networks:
       - neurashield-network
     depends_on:
+      - postgres
       - backend
       - ai-service
       - ipfs
@@ -225,6 +279,7 @@ volumes:
   ai-logs:
   backend-data:
   backup-data:
+  postgres-data:
 
 networks:
   neurashield-network:
