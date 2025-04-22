@@ -22,7 +22,7 @@ async function main() {
     }
 
     // Copy the MSP materials from the test-network to the wallet
-    const mspPath = path.resolve(__dirname, '../fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp');
+    const mspPath = '/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp';
     
     if (!fs.existsSync(mspPath)) {
       console.error(`MSP path not found: ${mspPath}`);
@@ -30,8 +30,12 @@ async function main() {
     }
 
     // Read the certificate and private key
-    const certPath = path.join(mspPath, 'signcerts', 'Admin@org1.example.com-cert.pem');
-    const keyPath = path.join(mspPath, 'keystore', fs.readdirSync(path.join(mspPath, 'keystore'))[0]);
+    const certPath = path.join(mspPath, 'signcerts', 'cert.pem');
+    const keyDir = path.join(mspPath, 'keystore');
+    console.log(`Looking for key files in: ${keyDir}`);
+    const keyFiles = fs.readdirSync(keyDir);
+    console.log(`Found keystore files: ${keyFiles.join(', ')}`);
+    const keyPath = path.join(keyDir, keyFiles[0]);
 
     const cert = fs.readFileSync(certPath).toString();
     const key = fs.readFileSync(keyPath).toString();

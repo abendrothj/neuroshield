@@ -3,79 +3,65 @@
 # Exit on error
 set -e
 
-# Colors for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# Change to the script directory
+cd "$(dirname "$0")"
 
-# Get the directory where the script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Check if kubectl is installed
+if ! command -v kubectl &> /dev/null; then
+    echo "kubectl is not installed. Please install kubectl first."
+    exit 1
+fi
 
-echo "Deploying NeuraShield to Kubernetes..."
-
-# Build Docker images
-echo "Building Docker images..."
-${SCRIPT_DIR}/build-images.sh
-
-# Check prerequisites
-echo "Checking prerequisites..."
-${SCRIPT_DIR}/check-prerequisites.sh
-
-# Setup monitoring infrastructure
-echo "Setting up monitoring infrastructure..."
-${SCRIPT_DIR}/setup-monitoring.sh
-
-# Create namespace
+# Create namespace if it doesn't exist
 echo "Creating namespace..."
-kubectl apply -f ${SCRIPT_DIR}/namespace.yaml
+kubectl apply -f namespace.yaml
 
-# Apply storage
-echo "Applying storage..."
-kubectl apply -f ${SCRIPT_DIR}/storage.yaml
+# Apply ConfigMaps and Secrets
+echo "Applying ConfigMaps and Secrets..."
+kubectl apply -f configmap.yaml
+kubectl apply -f fabric-configmaps.yaml
+kubectl apply -f secrets.yaml
 
-# Apply secrets
-echo "Applying secrets..."
-kubectl apply -f ${SCRIPT_DIR}/secrets.yaml
+# Apply StorageClass and PVCs
+echo "Applying Storage configurations..."
+kubectl apply -f storage.yaml
 
-# Apply network policies
+# Deploy Blockchain components
+echo "Deploying Hyperledger Fabric components..."
+kubectl apply -f blockchain-deployment.yaml
+
+# Wait for Fabric to be ready
+echo "Waiting for Fabric pods to be ready..."
+kubectl wait --for=condition=ready pod -l app=hyperledger --timeout=300s
+
+# Deploy backend, frontend, and AI services
+echo "Deploying application services..."
+kubectl apply -f backend-deployment.yaml
+kubectl apply -f frontend-deployment.yaml
+kubectl apply -f ai-deployment.yaml
+
+# Deploy Services
+echo "Exposing services..."
+kubectl apply -f services.yaml
+kubectl apply -f backend-service.yaml
+kubectl apply -f frontend-service.yaml
+kubectl apply -f ai-service.yaml
+
+# Apply Network Policies
 echo "Applying network policies..."
-kubectl apply -f ${SCRIPT_DIR}/network-policies.yaml
+kubectl apply -f network-policies.yaml
 
-# Apply services
-echo "Applying services..."
-kubectl apply -f ${SCRIPT_DIR}/frontend-service.yaml
-kubectl apply -f ${SCRIPT_DIR}/backend-service.yaml
-kubectl apply -f ${SCRIPT_DIR}/ai-service.yaml
+# Deploy Ingress
+echo "Setting up ingress..."
+kubectl apply -f ingress.yaml
 
-# Apply deployments
-echo "Applying deployments..."
-kubectl apply -f ${SCRIPT_DIR}/frontend-deployment.yaml
-kubectl apply -f ${SCRIPT_DIR}/backend-deployment.yaml
-kubectl apply -f ${SCRIPT_DIR}/ai-deployment.yaml
+# Setup monitoring
+echo "Setting up monitoring..."
+kubectl apply -f monitoring.yaml
 
-# Apply monitoring
-echo "Applying monitoring..."
-kubectl apply -f ${SCRIPT_DIR}/monitoring.yaml
+# Apply backup CronJob
+echo "Setting up backup job..."
+kubectl apply -f backup-cronjob.yaml
 
-# Apply ingress
-echo "Applying ingress..."
-kubectl apply -f ${SCRIPT_DIR}/ingress.yaml
-
-# Wait for deployments to be ready
-echo "Waiting for deployments to be ready..."
-kubectl wait --for=condition=available --timeout=300s deployment/neurashield-frontend -n neurashield
-kubectl wait --for=condition=available --timeout=300s deployment/neurashield-backend -n neurashield
-kubectl wait --for=condition=available --timeout=300s deployment/neurashield-ai -n neurashield
-
-echo "Deployment complete!"
-echo "Access the application at: http://neurashield.local"
-
-# Show service URLs
-echo -e "${YELLOW}Service URLs:${NC}"
-echo "Frontend: http://neurashield.local"
-echo "Backend API: http://neurashield.local/api"
-echo "AI Service: http://neurashield.local/ai"
-
-# Show pod status
-echo -e "${YELLOW}Pod Status:${NC}"
-kubectl get pods -l app=neurashield -n neurashield 
+echo "Deployment completed successfully!"
+echo "You can access the services through the configured ingress." 

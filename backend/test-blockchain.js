@@ -30,14 +30,18 @@ async function main() {
         await gateway.connect(ccp, {
             wallet,
             identity: 'admin',
-            discovery: { enabled: true, asLocalhost: true }
+            discovery: { enabled: false, asLocalhost: true }
         });
 
         // Get the network (channel) our contract is deployed to
+        console.log('Connecting to channel: neurashield-channel');
         const network = await gateway.getNetwork('neurashield-channel');
+        console.log('Connected to channel');
 
         // Get the contract from the network
+        console.log('Getting contract: neurashield');
         const contract = network.getContract('neurashield');
+        console.log('Got contract');
 
         // Create a test event
         const eventId = `test-${Date.now()}`;

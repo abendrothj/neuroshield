@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fabric-peer-config
+data:
+  # These configuration files would contain your actual MSP certs and TLS files
+  # For production, you would generate these properly using cryptogen or Fabric CA
+  # This is just a placeholder
+  connection-profile.json: |
+    {
+      "name": "neurashield-network",
+      "version": "1.0.0",
+      "client": {
+        "organization": "Org1",
+        "connection": {
+          "timeout": { "peer": { "endorser": "300" } }
+        }
+      },
+      "organizations": {
+        "Org1": {
+          "mspid": "Org1MSP",
+          "peers": ["peer0.org1.example.com"],
+          "certificateAuthorities": ["ca.org1.example.com"]
+        }
+      },
+      "peers": {
+        "peer0.org1.example.com": {
+          "url": "grpcs://fabric-peer:7051",
+          "tlsCACerts": {
+            "path": "/etc/hyperledger/fabric/tls/ca.crt"
+          }
+        }
+      },
+      "certificateAuthorities": {
+        "ca.org1.example.com": {
+          "url": "https://fabric-ca:7054",
+          "caName": "ca-org1"
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fabric-orderer-config
+data:
+  # Placeholder for orderer configuration
+  # In production, you would include the actual genesis block and certificates
+  orderer.yaml: |
+    General:
+      ListenAddress: 0.0.0.0
+      ListenPort: 7050
+      TLS:
+        Enabled: true
+        PrivateKey: /var/hyperledger/orderer/tls/server.key
+        Certificate: /var/hyperledger/orderer/tls/server.crt
+        RootCAs:
+          - /var/hyperledger/orderer/tls/ca.crt
+      Keepalive:
+        ServerMinInterval: 60s
+        ServerInterval: 7200s
+        ServerTimeout: 20s
+      BootstrapMethod: file
+      BootstrapFile: /var/hyperledger/orderer/orderer.genesis.block
+      LocalMSPID: OrdererMSP
+      LocalMSPDir: /var/hyperledger/orderer/msp
+      BCCSP:
+        Default: SW
+        SW:
+          Hash: SHA2
+          Security: 256 

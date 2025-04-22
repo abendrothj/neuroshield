@@ -1,0 +1,9 @@
+{
+  "dataset_path": "/home/jub/Cursor/neurashield/ai_models/datasets/UNSW_NB15",
+  "model_type": "ensemble",
+  "output_dir": "models/advanced",
+  "epochs": 30,
+  "batch_size": 64,
+  "feature_engineering": true,
+  "ensemble_size": 3
+}

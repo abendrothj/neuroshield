@@ -22,7 +22,7 @@
     "peer0.org1.example.com": {
       "url": "grpcs://localhost:7051",
       "tlsCACerts": {
-        "path": "../fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+        "path": "/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
       }
     }
   },
@@ -31,7 +31,7 @@
       "url": "https://localhost:7054",
       "caName": "ca-org1",
       "tlsCACerts": {
-        "path": "../fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/ca/ca.org1.example.com-cert.pem"
+        "path": "/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/ca/ca.org1.example.com-cert.pem"
       }
     }
   }
