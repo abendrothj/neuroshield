@@ -1,19 +1,19 @@
 # Core requirements
-numpy>=1.22.0
-pandas>=1.4.0
-scikit-learn>=1.0.0
+numpy>=1.19.2
+pandas>=1.2.0
+scikit-learn>=0.24.0
 tensorflow>=2.10.0
 matplotlib>=3.5.0
 
 # API requirements
-fastapi>=0.89.0
-uvicorn>=0.20.0
-pydantic>=1.10.0
+fastapi>=0.68.0
+uvicorn>=0.15.0
+pydantic>=1.8.2
 python-multipart>=0.0.5
-requests>=2.28.0
+requests>=2.26.0
 
 # Dashboard requirements
-streamlit>=1.18.0
+streamlit>=1.10.0
 plotly>=5.14.0
 altair>=4.2.0
 
@@ -25,4 +25,18 @@ python-dateutil>=2.8.2
 # Utility requirements
 tqdm>=4.65.0
 joblib>=1.2.0
-typing-extensions>=4.5.0 
+typing-extensions>=4.5.0
+
+# Additional requirements
+python-dotenv>=0.19.0
+pytest>=6.2.5
+pytest-cov>=2.12.1
+black>=21.9b0
+flake8>=3.9.0
+mypy>=0.910
+ipfs-api>=0.4.4
+fabric-sdk-py>=0.9.0
+prometheus-client>=0.11.0
+grafana-api>=1.0.3
+kubernetes>=12.0.1
+docker>=5.0.3 

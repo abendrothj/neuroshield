@@ -81,6 +81,8 @@ fabric-setup/
 
 # Python
 __pycache__/
+*.py[cod]
+*$py.class
 *.so
 .Python
 env/
@@ -95,6 +97,8 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -189,7 +193,6 @@ docs/_build/
 docs/_static/
 docs/_templates/
 *.aux
-*.log
 *.out
 *.toc
 
@@ -212,3 +215,81 @@ postgres-data/
 
 # Workspace files
 *.code-workspace
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Project specific
+data/raw/
+data/processed/
+models/checkpoints/
+output/logs/
+output/results/
+*.log
+*.model
+*.h5
+*.pb
+*.ckpt.*
+*.pth
+
+# Blockchain
+fabric-setup/organizations/
+fabric-setup/channel-artifacts/
+fabric-samples/
+wallet/
+*.block
+*.tx
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm
+.yarn/
+.pnp.*
+
+# Docker
+.docker/
+*.env
+.env.*
+!.env.example
+
+# Kubernetes
+k8s/secrets/
+kubeconfig
+
+# System
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*.tmp
+*~
+
+# Documentation
+docs/_build/
+site/
+
+# Monitoring
+monitoring/data/
+monitoring/grafana/data/
+monitoring/prometheus/data/

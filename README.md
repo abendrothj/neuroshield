@@ -1,210 +1,135 @@
-# NeuraShield: Advanced Network Threat Detection with Blockchain Audit Trail
+# NeuraShield
 
-NeuraShield is a comprehensive cybersecurity platform that combines advanced neural network-based threat detection with immutable blockchain logging for secure audit trails. By leveraging knowledge from multiple cybersecurity datasets and Hyperledger Fabric blockchain technology, NeuraShield provides exceptional detection capabilities with tamper-proof forensic evidence.
+NeuraShield is an advanced network threat detection system that combines neural network-based threat detection with blockchain-based audit logging. The system provides real-time threat detection, comprehensive security event logging, and an interactive dashboard for monitoring and analysis.
 
 ## Features
 
-- **Multi-Dataset Transfer Learning**: Progressively builds knowledge from multiple datasets for superior threat detection
-- **Real-time Inference**: Analyze network traffic in real-time with high accuracy (96%)
+- **AI-Powered Threat Detection**: Utilizes multi-dataset transfer learning for accurate threat detection
+- **Real-time Inference**: Processes network traffic in real-time with low latency
 - **Blockchain Audit Trail**: Immutable logging of security events using Hyperledger Fabric
-- **IPFS Integration**: Distributed storage for full log data
-- **RESTful API**: Simple integration with existing security infrastructure
-- **Dashboard**: Interactive visualizations for monitoring threats and blockchain records
-- **Docker & Kubernetes Support**: Enterprise-grade deployment options
+- **RESTful API**: Easy integration with existing security infrastructure
+- **Interactive Dashboard**: Real-time visualization of threats and system status
+- **Scalable Architecture**: Containerized deployment with Kubernetes support
 
-## Architecture
+## System Architecture
 
-NeuraShield consists of several integrated components:
+The system consists of several key components:
 
-1. **AI-Powered Threat Detection Engine**:
-   - Single-dataset training: `train_simple.py`, `train_advanced.py`
-   - Multi-dataset learning: `multi_dataset_learning.py`
-   - Chained transfer learning: `chain_transfer.py`
-   - Feature engineering and optimization
+- **AI Engine**: Neural network-based threat detection
+- **Blockchain Network**: Hyperledger Fabric for immutable event logging
+- **Backend Services**: REST API and event processing
+- **Frontend Dashboard**: Real-time monitoring interface
+- **Monitoring System**: Performance and health metrics
 
-2. **Blockchain Audit Trail**:
-   - Hyperledger Fabric implementation in `blockchain/` and `fabric-setup/`
-   - Smart contract (chaincode) in `backend/chaincode/`
-   - Identity management in `backend/wallet/`
-   - IPFS integration for storing full logs
+## Directory Structure
 
-3. **Backend Services**:
-   - Core model serving: `inference.py`
-   - API service: `api.py`
-   - Traffic processor: `traffic_processor.py`
-   - Blockchain connector: `backend/test-blockchain.js`
+```
+neurashield/
+├── backend/              # Backend services and API
+├── blockchain/          # Blockchain implementation
+├── data/               # Datasets and training data
+├── docs/               # Documentation
+├── fabric-setup/       # Hyperledger Fabric setup
+├── frontend/           # Dashboard and UI
+├── k8s/                # Kubernetes configurations
+├── models/             # Trained models and model code
+├── monitoring/         # Monitoring and metrics
+├── output/             # Output files and logs
+├── scripts/            # Utility scripts
+│   ├── backup/        # Backup and recovery
+│   ├── deploy/        # Deployment scripts
+│   ├── setup/         # Setup and installation
+│   ├── test/          # Testing scripts
+│   └── utils/         # Utility functions
+└── tests/             # Test files
+```
 
-4. **Frontend Dashboard**:
-   - Dashboard: `dashboard.py`
-   - Real-time threat visualizations
-   - Blockchain record explorer
-   - Security event monitoring
+## Prerequisites
 
-## Performance
-
-The current model achieves:
-- 96% overall accuracy
-- 0.997 AUC score (exceptional discrimination ability)
-- 0.919 Matthews Correlation Coefficient
-- Balanced detection (95% F1-score for benign traffic, 97% for attacks)
-- Immutable and verifiable audit trail for all security events
+- Python 3.8+
+- Node.js 16+
+- Docker and Docker Compose
+- Go 1.16+ (for blockchain development)
+- Kubernetes cluster (for production deployment)
 
 ## Installation
 
-### Prerequisites
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/neurashield.git
+cd neurashield
+```
 
-- Python 3.8+
-- TensorFlow 2.10+
-- Node.js 14+
-- Docker and Docker Compose
-- Kubernetes (for production deployment)
-- Hyperledger Fabric 2.2+
+2. Run the setup script:
+```bash
+./scripts/setup/setup.sh
+```
 
-### Setup
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/yourusername/neurashield.git
-   cd neurashield
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   cd backend && npm install
-   ```
-
-3. **Set up the Fabric network**:
-   ```bash
-   cd fabric-setup
-   ./bootstrap.sh
-   cd fabric-samples/test-network
-   ./network.sh up createChannel -c neurashield-channel -ca
-   ./network.sh deployCC -ccn neurashield -ccp /path/to/neurashield/backend/chaincode -ccl go -c neurashield-channel
-   ```
-
-4. **Download pre-trained models** (optional):
-   ```bash
-   mkdir -p models/multi_dataset/chained_transfer_improved
-   # Download pre-trained models here
-   ```
+3. Configure environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
 
 ## Usage
 
-### Training Models
+### Development
 
-1. **Single dataset training**:
-   ```bash
-   python train_simple.py --dataset-path /path/to/dataset --model-type residual
-   ```
+1. Start the development environment:
+```bash
+./scripts/setup/setup.sh --dev
+```
 
-2. **Multi-dataset learning**:
-   ```bash
-   python multi_dataset_learning.py --unsw-path /path/to/UNSW_NB15 --cic-ddos19-path /path/to/CIC-DDoS19
-   ```
+2. Run tests:
+```bash
+./scripts/test/test.sh
+```
 
-3. **Chained transfer learning**:
-   ```bash
-   python chain_transfer.py --base-model-path /path/to/first/model --target-dataset-path /path/to/CSE-CIC-IDS2018
-   ```
+### Production
 
-### Running the System
+1. Deploy to Kubernetes:
+```bash
+./scripts/deploy/deploy.sh k8s
+```
 
-1. **Start all services using Docker Compose**:
-   ```bash
-   docker-compose up -d
-   ```
-
-2. **Or start individual services**:
-   ```bash
-   # Start the AI service
-   python api.py
-   
-   # Start the dashboard
-   streamlit run dashboard.py
-   
-   # Process network traffic
-   python traffic_processor.py --interface eth0
-   
-   # Start the blockchain connector
-   cd backend && node test-blockchain.js
-   ```
-
-### Blockchain Interaction
-
-1. **Enroll admin user**:
-   ```bash
-   cd backend
-   node enroll-admin.js
-   ```
-
-2. **Log a security event**:
-   ```bash
-   docker run --rm -it --network=fabric_test --name=cli -e GOPATH=/opt/gopath [...environment variables...] \
-   hyperledger/fabric-tools:latest bash -c "peer chaincode invoke [...options...] \
-   -c '{\"function\":\"LogEvent\",\"Args\":[\"event-id\", \"timestamp\", \"type\", \"details\", \"ipfsHash\"]}'"
-   ```
-
-3. **Query events**:
-   ```bash
-   docker run --rm -it --network=fabric_test --name=cli -e GOPATH=/opt/gopath [...environment variables...] \
-   hyperledger/fabric-tools:latest bash -c "peer chaincode query [...options...] \
-   -c '{\"function\":\"QueryAllEvents\",\"Args\":[]}'"
-   ```
+2. Deploy blockchain network:
+```bash
+./scripts/deploy/deploy.sh blockchain
+```
 
 ## API Documentation
 
-The API is available at `http://localhost:8000/docs` when running, with these key endpoints:
+The API provides the following endpoints:
 
-- `GET /health`: API health check
-- `POST /predict`: Make a single prediction
-- `POST /predict/batch`: Make batch predictions
-- `POST /explain`: Get feature contribution explanations
-- `POST /blockchain/log`: Log a security event to the blockchain
-- `GET /blockchain/events`: Query blockchain events
+- `POST /api/v1/predict`: Submit network traffic for threat detection
+- `GET /api/v1/events`: Retrieve security events
+- `GET /api/v1/health`: System health check
+- `GET /api/v1/metrics`: System performance metrics
 
 ## Dashboard
 
-The dashboard is available at `http://localhost:8501` and provides:
-
-- Real-time threat detection visualization
-- Attack trend analysis
-- Feature importance insights
-- Blockchain record explorer
-- Audit trail verification
-- Alert management
-
-## Deployment
-
-### Development Environment
-- Docker Compose for local setup
-- Minikube for Kubernetes development
-
-### Production Environment
-- Kubernetes for orchestration
-- Multi-zone deployment for high availability
-- Microservices architecture
-- CI/CD pipeline support
-
-## Security Considerations
-
-- Data encryption at rest and in transit
-- Private permissioned blockchain network
-- Certificate-based authentication for blockchain
-- Role-based access control for API
-- Model security against adversarial attacks
+The dashboard provides:
+- Real-time threat visualization
+- Historical event analysis
+- System performance metrics
+- Configuration management
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
-- UNSW-NB15, CIC-DDoS19, and CSE-CIC-IDS2018 datasets
-- Hyperledger Fabric community
-- TensorFlow team for their ML framework
-- IPFS for distributed storage 
+- CICIDS2017 Dataset
+- UNSW-NB15 Dataset
+- Hyperledger Fabric
+- TensorFlow
+- React 
