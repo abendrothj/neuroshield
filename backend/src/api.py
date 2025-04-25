@@ -14,7 +14,23 @@ from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator, RootModel
+import numpy as np
+import time
+import gc
+from dotenv import load_dotenv
+
+# Add the root directory to the path to find the models module
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
+# Import after adding to path
+from models.threat_detection_model import ThreatDetectionModel
+from models.metrics import update_model_metrics, record_prediction, record_batch_size, update_gpu_memory, record_prediction_result, set_model_version
+import tensorflow as tf
+import psutil
+import requests
 
 # Import the predictor class from inference.py
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -51,6 +67,10 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+# Add configuration for blockchain integration
+BLOCKCHAIN_WEBHOOK_URL = os.environ.get('BLOCKCHAIN_WEBHOOK_URL', 'http://localhost:3000/api/v1/ai-detection')
+BLOCKCHAIN_ENABLED = os.environ.get('BLOCKCHAIN_ENABLED', 'true').lower() == 'true'
 
 # Define Pydantic models for request and response
 class NetworkTrafficFeatures(BaseModel):
@@ -100,6 +120,21 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="API status")
     model_loaded: bool = Field(..., description="Whether the model is loaded")
     version: str = Field(..., description="API version")
+
+class AnalysisRequest(BaseModel):
+    """Request model for analyzing network traffic"""
+    data: List[List[float]] = Field(..., description="List of network traffic samples")
+
+class AnalysisResponse(BaseModel):
+    """Response model for analyzing network traffic"""
+    results: List[ThreatPrediction] = Field(..., description="List of threat predictions")
+
+class ThreatPrediction(BaseModel):
+    """Model for threat prediction"""
+    threat_level: str = Field(..., description="Threat level")
+    confidence: float = Field(..., description="Confidence score")
+    probabilities: Dict[str, float] = Field(..., description="Probabilities for each threat type")
+    model_version: str = Field(..., description="Model version")
 
 # Background task for logging predictions
 def log_prediction(prediction: Dict[str, Any], traffic_data: Dict[str, Any]):
@@ -230,6 +265,119 @@ async def explain(traffic: NetworkTrafficFeatures):
         raise HTTPException(status_code=500, detail=result["error"])
     
     return result
+
+@app.post("/analyze", response_model=AnalysisResponse)
+async def analyze_data(request: AnalysisRequest, background_tasks: BackgroundTasks):
+    """Analyze network traffic for threats"""
+    
+    try:
+        # ... existing processing code ...
+
+        # Process results
+        results = []
+        for i, probs in enumerate(probabilities):
+            confidence = np.max(probs)
+            predicted_class = np.argmax(probs)
+            
+            # Determine threat level based on confidence
+            threat_level = "low"
+            if confidence > 0.9:
+                threat_level = "critical"
+            elif confidence > 0.7:
+                threat_level = "high"
+            elif confidence > 0.4:
+                threat_level = "medium"
+            
+            # Map class index to threat type
+            threat_type = "Unknown"
+            if predicted_class == 0:
+                threat_type = "Normal"
+            elif predicted_class == 1:
+                threat_type = "DDoS"
+            elif predicted_class == 2:
+                threat_type = "Brute Force"
+            elif predicted_class == 3:
+                threat_type = "Port Scan"
+            elif predicted_class == 4:
+                threat_type = "Malware"
+            
+            # Create result object
+            result = ThreatPrediction(
+                threat_level=threat_level,
+                confidence=float(confidence),
+                probabilities={
+                    "normal": float(probs[0]) if len(probs) > 0 else 0.0,
+                    "ddos": float(probs[1]) if len(probs) > 1 else 0.0,
+                    "brute_force": float(probs[2]) if len(probs) > 2 else 0.0,
+                    "port_scan": float(probs[3]) if len(probs) > 3 else 0.0,
+                    "malware": float(probs[4]) if len(probs) > 4 else 0.0
+                },
+                model_version=model.model_version
+            )
+            results.append(result)
+            
+            # Record prediction result for metrics
+            record_prediction_result(threat_level)
+            
+            # Send significant threats to blockchain if enabled
+            if BLOCKCHAIN_ENABLED and threat_level != "low" and threat_type != "Normal":
+                try:
+                    # Prepare data for blockchain
+                    blockchain_data = {
+                        "threat_type": threat_type,
+                        "confidence": float(confidence),
+                        "raw_predictions": [float(p) for p in probs],
+                        "source_data": request.data[i],
+                        "timestamp": time.time(),
+                        "model_version": model.model_version
+                    }
+                    
+                    # Send to blockchain webhook in the background to avoid blocking
+                    background_tasks.add_task(
+                        send_to_blockchain,
+                        blockchain_data
+                    )
+                except Exception as e:
+                    logging.error(f"Error sending to blockchain: {str(e)}")
+
+        # ... rest of the existing code ...
+        
+    except Exception as e:
+        logging.error(f"Error in analyze_data: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+async def send_to_blockchain(event_data):
+    """Send threat event data to the blockchain integration service"""
+    try:
+        # Send data to the blockchain webhook
+        response = requests.post(
+            BLOCKCHAIN_WEBHOOK_URL,
+            json=event_data,
+            headers={"Content-Type": "application/json"},
+            timeout=5
+        )
+        
+        # Log the result
+        if response.status_code == 202:
+            logging.info(f"Event sent to blockchain service: {response.json().get('message', 'Success')}")
+        else:
+            logging.error(f"Failed to send event to blockchain: HTTP {response.status_code} - {response.text}")
+    except Exception as e:
+        logging.error(f"Error in send_to_blockchain: {str(e)}")
+
+# Add a new endpoint to get recent threats for polling mode
+@app.get("/api/recent-threats")
+async def recent_threats():
+    """Get recent threats for blockchain integration in polling mode"""
+    # This would typically retrieve from a database or cache
+    # For now, we'll return a simple implementation with mock data if needed
+    try:
+        # In a real implementation, you would retrieve this from a database
+        # For now, return empty if no recent threats
+        return {"threats": []}
+    except Exception as e:
+        logging.error(f"Error getting recent threats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):

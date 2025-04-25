@@ -11,7 +11,7 @@ LOG_DIR = os.environ.get('LOG_DIR', '.')
 os.makedirs(LOG_DIR, exist_ok=True)
 log_file_path = os.path.join(LOG_DIR, 'ai_service.log')
 
-from ai_models.metrics import start_metrics_server
+from models.metrics import start_metrics_server
 
 # Configure logging
 logging.basicConfig(
@@ -39,7 +39,7 @@ def main():
         
         # Use uvicorn to run the FastAPI application
         uvicorn.run(
-            "ai_models.api:app",
+            "models.api:app",
             host="0.0.0.0",
             port=api_port,
             reload=False,

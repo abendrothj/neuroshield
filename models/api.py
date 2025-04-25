@@ -7,8 +7,8 @@ import time
 import os
 import gc
 from dotenv import load_dotenv
-from ai_models.threat_detection_model import ThreatDetectionModel
-from ai_models.metrics import update_model_metrics, record_prediction, record_batch_size, update_gpu_memory, record_prediction_result, set_model_version
+from models.threat_detection_model import ThreatDetectionModel
+from models.metrics import update_model_metrics, record_prediction, record_batch_size, update_gpu_memory, record_prediction_result, set_model_version
 import tensorflow as tf
 from typing import List, Optional, Dict, Any, Union
 import psutil
@@ -43,8 +43,8 @@ model_state = {
     "model": None,
     "last_used": 0,
     "model_version": "unknown",
-    "model_path": os.getenv('MODEL_PATH', 'models/threat_detection_20250403_212211'),
-    "input_shape": int(os.getenv('INPUT_SHAPE', 39)),
+    "model_path": os.getenv('MODEL_PATH', 'models/threat_detection_20250420_233903.keras'),
+    "input_shape": int(os.getenv('INPUT_SHAPE', 8)),
     "num_classes": int(os.getenv('NUM_CLASSES', 2)),
     "lock": False  # Simple lock to prevent concurrent model loading
 }

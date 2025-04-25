@@ -5,6 +5,6 @@ This package contains the AI models for threat detection and analysis
 in the NeuraShield cybersecurity platform.
 """
 
-from ai_models.threat_detection_model import ThreatDetectionModel
+from models.threat_detection_model import ThreatDetectionModel
 
 __all__ = ['ThreatDetectionModel'] 

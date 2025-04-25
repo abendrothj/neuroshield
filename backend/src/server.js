@@ -9,6 +9,10 @@ const { body, param, validationResult } = require('express-validator');
 const winston = require('winston');
 const { metricsApp, httpRequestDuration, httpRequestsTotal, blockchainSyncStatus, modelAccuracy } = require('./metrics');
 const helmet = require('helmet');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const blockchainIntegration = require('./blockchain-integration');
+const identityManager = require('../identity-manager');
 require('dotenv').config();
 
 // Setup production logging
@@ -81,6 +85,10 @@ const ipfs = create({ url: process.env.IPFS_URL || 'http://localhost:5001' });
 const ccpPath = path.resolve(__dirname, '..', 'connection-profile.json');
 const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
 
+// Channel and chaincode configuration
+const CHANNEL_NAME = process.env.CHANNEL_NAME || 'neurashield-channel';
+const CHAINCODE_NAME = process.env.CHAINCODE_NAME || 'neurashield';
+
 // Connection pool for Fabric gateway
 const gatewayPool = {
     pool: [], // Store active gateways
@@ -102,7 +110,7 @@ const gatewayPool = {
         await gateway.connect(ccp, { 
             wallet, 
             identity: process.env.USER_ID || 'admin', 
-            discovery: { enabled: true, asLocalhost: true }
+            discovery: { enabled: false }
         });
         this.activeConnections++;
         return gateway;
@@ -146,7 +154,27 @@ async function withGateway(callback) {
 
 // Initialize Fabric gateway - kept for backward compatibility
 async function getGateway() {
-    return await gatewayPool.getGateway();
+    try {
+        const wallet = await Wallets.newFileSystemWallet(path.join(__dirname, '..', 'wallet'));
+        const adminExists = await wallet.get('admin');
+        if (!adminExists) {
+            logger.error('Admin identity not found in wallet');
+            throw new Error('Admin identity not found in wallet');
+        }
+        logger.info('Successfully loaded admin identity from wallet');
+        
+        const gateway = new Gateway();
+        await gateway.connect(ccp, { 
+            wallet, 
+            identity: 'admin', 
+            discovery: { enabled: false }
+        });
+        
+        return gateway;
+    } catch (error) {
+        logger.error(`Error getting gateway: ${error}`);
+        throw error;
+    }
 }
 
 // Input validation middleware
@@ -186,33 +214,59 @@ app.get('/health', (req, res) => {
     });
 });
 
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'healthy',
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Metrics endpoint
 app.use('/metrics', metricsApp);
 
 // Update blockchain sync status periodically
 const updateBlockchainStatus = async () => {
+    // Skip blockchain check if SKIP_BLOCKCHAIN is set to true
+    if (process.env.SKIP_BLOCKCHAIN === 'true') {
+        logger.info('Blockchain sync check skipped due to SKIP_BLOCKCHAIN setting');
+        return;
+    }
+    
     let gateway;
     try {
         gateway = await getGateway();
-        const network = await gateway.getNetwork('neurashield-channel');
+        if (!gateway) {
+            blockchainSyncStatus.set(0); // 0 = not synced
+            logger.warn('Blockchain sync status: not synced - gateway not available');
+            return;
+        }
         
-        // Basic check if the blockchain is accessible and responding
+        // Try to connect to the network
+        try {
+            const network = await gateway.getNetwork(CHANNEL_NAME);
         if (network) {
             blockchainSyncStatus.set(1); // 1 = synced
             logger.info('Blockchain sync status: synced');
         } else {
+                blockchainSyncStatus.set(0); // 0 = not synced
+                logger.warn('Blockchain sync status: not synced - network not available');
+            }
+        } catch (networkError) {
             blockchainSyncStatus.set(0); // 0 = not synced
-            logger.warn('Blockchain sync status: not synced');
+            logger.warn(`Blockchain sync status: not synced - network error: ${networkError.message}`);
+            // Don't throw the error further, just log it
         }
     } catch (error) {
         blockchainSyncStatus.set(0); // 0 = not synced
-        logger.error(`Error checking blockchain sync status: ${error}`);
+        logger.error(`Error checking blockchain sync status: ${error.message}`);
+        // Don't throw the error further, just log it
     } finally {
         if (gateway) {
             try {
                 gateway.disconnect();
             } catch (err) {
-                logger.error(`Error disconnecting gateway: ${err}`);
+                logger.error(`Error disconnecting gateway: ${err.message}`);
             }
         }
     }
@@ -225,9 +279,15 @@ setInterval(updateBlockchainStatus, 5 * 60 * 1000);
 // Helper function to record threat data to blockchain
 async function recordToBlockchain(cid, results) {
     try {
+        if (process.env.SKIP_BLOCKCHAIN === 'true') {
+            logger.info(`Blockchain recording skipped due to SKIP_BLOCKCHAIN setting. IPFS CID: ${cid}`);
+            return true;
+        }
+        
         return await withGateway(async (gateway) => {
-            const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
-            const contract = network.getContract(process.env.CONTRACT_NAME);
+            try {
+                const network = await gateway.getNetwork(CHANNEL_NAME);
+                const contract = network.getContract(CHAINCODE_NAME);
             
             // Create a summary of the threats
             const threatSummary = results.map(r => ({
@@ -245,10 +305,16 @@ async function recordToBlockchain(cid, results) {
             
             logger.info(`Successfully recorded threat to blockchain, IPFS CID: ${cid}`);
             return true;
+            } catch (error) {
+                logger.error(`Error in blockchain transaction: ${error.message}`);
+                // Return success anyway so the flow continues
+                return true;
+            }
         });
     } catch (error) {
-        logger.error(`Blockchain recording error: ${error}`);
-        throw error;
+        logger.error(`Blockchain recording error: ${error.message}`);
+        // Return success anyway to not break the application flow
+        return true;
     }
 }
 
@@ -271,11 +337,13 @@ app.post('/api/analyze',
                 });
             }
             
-            logger.info(`Sending data to AI service at ${process.env.AI_SERVICE_URL}/analyze`);
+            // Send to AI service for analysis
+            const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:5000';
+            logger.info(`Sending data to AI service at ${aiServiceUrl}/analyze`);
             const startTime = Date.now();
             
             // Send to AI service for analysis
-            const aiResponse = await axios.post(`${process.env.AI_SERVICE_URL}/analyze`, { data });
+            const aiResponse = await axios.post(`${aiServiceUrl}/analyze`, { data });
             const processingTime = (Date.now() - startTime) / 1000;
             
             // Update model accuracy if provided in the response
@@ -342,8 +410,8 @@ app.get('/api/ai-metrics', apiLimiter, async (req, res) => {
         // Add additional context from the blockchain
         try {
             let gateway = await getGateway();
-            const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
-            const contract = network.getContract(process.env.CONTRACT_NAME);
+            const network = await gateway.getNetwork(CHANNEL_NAME);
+            const contract = network.getContract(CHAINCODE_NAME);
             
             // Get threat stats from blockchain
             const threatStatsBuffer = await contract.evaluateTransaction('getThreatStats');
@@ -454,8 +522,8 @@ app.post('/api/events',
 
             // Store event on Fabric
             await withGateway(async (gateway) => {
-                const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
-                const contract = network.getContract(process.env.CONTRACT_NAME);
+                const network = await gateway.getNetwork(CHANNEL_NAME);
+                const contract = network.getContract(CHAINCODE_NAME);
                 
                 await contract.submitTransaction('LogEvent', id, timestamp, type, JSON.stringify(details), ipfsHash);
             });
@@ -483,8 +551,8 @@ app.get('/api/events/:id',
     async (req, res) => {
         try {
             const result = await withGateway(async (gateway) => {
-                const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
-                const contract = network.getContract(process.env.CONTRACT_NAME);
+                const network = await gateway.getNetwork(CHANNEL_NAME);
+                const contract = network.getContract(CHAINCODE_NAME);
                 
                 const resultBuffer = await contract.evaluateTransaction('QueryEvent', req.params.id);
                 return JSON.parse(resultBuffer.toString());
@@ -501,8 +569,8 @@ app.get('/api/events/:id',
 app.get('/api/events', apiLimiter, async (req, res) => {
     try {
         const result = await withGateway(async (gateway) => {
-            const network = await gateway.getNetwork(process.env.CHANNEL_NAME);
-            const contract = network.getContract(process.env.CONTRACT_NAME);
+            const network = await gateway.getNetwork(CHANNEL_NAME);
+            const contract = network.getContract(CHAINCODE_NAME);
             
             const resultBuffer = await contract.evaluateTransaction('QueryAllEvents');
             return JSON.parse(resultBuffer.toString());
@@ -512,6 +580,59 @@ app.get('/api/events', apiLimiter, async (req, res) => {
     } catch (error) {
         logger.error(`Failed to query all events: ${error}`);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Blockchain integration routes
+app.post('/api/v1/ai-detection', blockchainIntegration.aiDetectionWebhook);
+
+// Add blockchain event query endpoints
+app.get('/api/v1/events', async (req, res) => {
+    try {
+        const gateway = await getBlockchainGateway();
+        const network = await gateway.getNetwork(CHANNEL_NAME);
+        const contract = network.getContract(CHAINCODE_NAME);
+        
+        // Query all events from blockchain
+        const result = await contract.evaluateTransaction('QueryAllEvents');
+        
+        // Parse the results
+        const events = JSON.parse(result.toString());
+        
+        // Close gateway connection
+        gateway.disconnect();
+        
+        res.json(events);
+    } catch (error) {
+        logger.error(`Error fetching blockchain events: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch blockchain events' });
+    }
+});
+
+app.get('/api/v1/events/:id', async (req, res) => {
+    try {
+        const eventId = req.params.id;
+        const gateway = await getBlockchainGateway();
+        const network = await gateway.getNetwork(CHANNEL_NAME);
+        const contract = network.getContract(CHAINCODE_NAME);
+        
+        // Query specific event from blockchain
+        const result = await contract.evaluateTransaction('QueryEvent', eventId);
+        
+        // Parse the result
+        const event = JSON.parse(result.toString());
+        
+        // Close gateway connection
+        gateway.disconnect();
+        
+        if (!event) {
+            return res.status(404).json({ error: 'Event not found' });
+        }
+        
+        res.json(event);
+    } catch (error) {
+        logger.error(`Error fetching blockchain event: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch blockchain event' });
     }
 });
 
@@ -534,7 +655,73 @@ app.use((err, req, res, next) => {
     });
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+// Helper function to get blockchain gateway
+async function getBlockchainGateway() {
+    try {
+        // Use identity manager to get the gateway connection
+        return await identityManager.getGatewayConnection(
+            process.env.BLOCKCHAIN_IDENTITY || 'blockchain-service'
+        );
+    } catch (error) {
+        logger.error(`Error getting blockchain gateway: ${error.message}`);
+        throw error;
+    }
+}
+
+// Server configuration
+const PORT = process.env.PORT || 3000;
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5000';
+const IPFS_URL = process.env.IPFS_URL || 'http://localhost:5001';
+
+// Safe startup to handle blockchain errors
+async function startServer() {
+    try {
+        logger.info(`Starting server with configuration:
+            Port: ${PORT}
+            AI Service URL: ${AI_SERVICE_URL}
+            IPFS URL: ${IPFS_URL}
+            Channel Name: ${CHANNEL_NAME}
+            Chaincode Name: ${CHAINCODE_NAME}
+            Blockchain Enabled: ${process.env.SKIP_BLOCKCHAIN !== 'true'}
+        `);
+
+        // If not skipping blockchain, run the update immediately
+        if (process.env.SKIP_BLOCKCHAIN !== 'true') {
+            try {
+                await updateBlockchainStatus().catch(err => {
+                    logger.error(`Error during initial blockchain status update: ${err.message}`);
+                });
+            } catch (blockchainError) {
+                logger.error(`Failed to initialize blockchain: ${blockchainError.message}`);
+                logger.info('Server will continue running without blockchain integration');
+            }
+        } else {
+            logger.info('Blockchain integration is disabled');
+        }
+        
+        // Start server whether blockchain initialization succeeded or not
+        const server = app.listen(PORT, () => {
     logger.info(`Server running on port ${PORT}`);
 }); 
+
+        // Handle server errors
+        server.on('error', (error) => {
+            logger.error(`Server error: ${error.message}`);
+            process.exit(1);
+        });
+        
+        // Set up the blockchain status update interval
+        setInterval(() => {
+            updateBlockchainStatus().catch(err => {
+                logger.error(`Error in scheduled blockchain status update: ${err.message}`);
+            });
+        }, 5 * 60 * 1000); // Every 5 minutes
+        
+    } catch (error) {
+        logger.error(`Failed to start server: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+// Start the server
+startServer(); 

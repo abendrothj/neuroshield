@@ -1,219 +1,95 @@
-from prometheus_client import start_http_server, Counter, Gauge, Histogram, Summary, REGISTRY
+"""
+Metrics collection module for the NeuraShield threat detection system.
+"""
+
+import os
 import time
 import threading
-import logging
-import os
+from prometheus_client import start_http_server, Gauge, Counter, Histogram
 
 # Get log directory from environment variable or use current directory
-LOG_DIR = os.environ.get('LOG_DIR', '.')
+LOG_DIR = os.environ.get('LOG_DIR', './logs')
 os.makedirs(LOG_DIR, exist_ok=True)
-log_file_path = os.path.join(LOG_DIR, 'ai_metrics.log')
+LOG_FILE = os.path.join(LOG_DIR, 'ai_metrics.log')
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file_path),
-        logging.StreamHandler()
-    ]
-)
+# Initialize metrics
+MODEL_ACCURACY = Gauge('model_accuracy', 'Accuracy of the model', ['model_name'])
+MODEL_MEMORY_USAGE = Gauge('model_memory_usage', 'Memory usage of the model in bytes', ['model_name'])
+PREDICTION_DURATION = Histogram('prediction_duration', 'Time taken for prediction in seconds', ['model_name'])
+PREDICTION_COUNT = Counter('prediction_count', 'Number of predictions made', ['model_name', 'success'])
+BATCH_SIZE = Histogram('batch_size', 'Size of prediction batches')
+GPU_MEMORY_USAGE = Gauge('gpu_memory_usage', 'GPU memory usage in bytes', ['device'])
+PREDICTION_RESULT = Counter('prediction_result', 'Distribution of prediction results', ['result'])
+MODEL_VERSION = Gauge('model_version', 'Model version and deployment time', ['version', 'deployment_time'])
 
-# Helper function to check if a metric already exists
-def metric_exists(name):
-    # Safely check if a metric name already exists in the registry
-    return name in REGISTRY._names_to_collectors
-
-# Create metrics only if they don't already exist
-if not metric_exists('model_predictions_total'):
-    model_predictions_total = Counter(
-        'model_predictions_total',
-        'Total number of model predictions',
-        ['model_name', 'status']
-    )
-else:
-    # Get existing metric
-    model_predictions_total = REGISTRY._names_to_collectors['model_predictions_total']
-
-if not metric_exists('model_prediction_duration_seconds'):
-    model_prediction_duration = Histogram(
-        'model_prediction_duration_seconds',
-        'Duration of model predictions in seconds',
-        ['model_name'],
-        buckets=[0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10]
-    )
-else:
-    model_prediction_duration = REGISTRY._names_to_collectors['model_prediction_duration_seconds']
-
-if not metric_exists('model_accuracy'):
-    model_accuracy = Gauge(
-        'model_accuracy',
-        'Current accuracy of the threat detection model',
-        ['model_name']
-    )
-else:
-    model_accuracy = REGISTRY._names_to_collectors['model_accuracy']
-
-if not metric_exists('model_memory_usage_bytes'):
-    model_memory_usage = Gauge(
-        'model_memory_usage_bytes',
-        'Memory usage of the model in bytes',
-        ['model_name']
-    )
-else:
-    model_memory_usage = REGISTRY._names_to_collectors['model_memory_usage_bytes']
-
-if not metric_exists('model_gpu_utilization_percent'):
-    model_gpu_utilization = Gauge(
-        'model_gpu_utilization_percent',
-        'GPU utilization percentage',
-        ['gpu_id']
-    )
-else:
-    model_gpu_utilization = REGISTRY._names_to_collectors['model_gpu_utilization_percent']
-
-if not metric_exists('model_version_info'):
-    model_version = Gauge(
-        'model_version_info',
-        'Information about the currently loaded model version',
-        ['version', 'deployment_time']
-    )
-else:
-    model_version = REGISTRY._names_to_collectors['model_version_info']
-
-if not metric_exists('prediction_requests_total'):
-    prediction_requests_total = Counter(
-        'prediction_requests_total', 
-        'Total number of prediction requests',
-        ['status']
-    )
-else:
-    prediction_requests_total = REGISTRY._names_to_collectors['prediction_requests_total']
-
-if not metric_exists('prediction_results_total'):
-    prediction_results_total = Counter(
-        'prediction_results_total', 
-        'Total number of predictions by result',
-        ['result']
-    )
-else:
-    prediction_results_total = REGISTRY._names_to_collectors['prediction_results_total']
-
-if not metric_exists('prediction_latency_seconds'):
-    prediction_latency = Histogram(
-        'prediction_latency_seconds', 
-        'Prediction request latency in seconds',
-        ['status'],
-        buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, float('inf'))
-    )
-else:
-    prediction_latency = REGISTRY._names_to_collectors['prediction_latency_seconds']
-
-if not metric_exists('prediction_confidence'):
-    prediction_confidence = Summary(
-        'prediction_confidence',
-        'Confidence of predictions',
-        ['result']
-    )
-else:
-    prediction_confidence = REGISTRY._names_to_collectors['prediction_confidence']
-
-if not metric_exists('gpu_memory_bytes'):
-    gpu_memory_usage = Gauge(
-        'gpu_memory_bytes',
-        'GPU memory usage in bytes'
-    )
-else:
-    gpu_memory_usage = REGISTRY._names_to_collectors['gpu_memory_bytes']
-
-if not metric_exists('batch_size'):
-    batch_size = Summary(
-        'batch_size',
-        'Size of prediction batches'
-    )
-else:
-    batch_size = REGISTRY._names_to_collectors['batch_size']
-
-if not metric_exists('feature_importance'):
-    feature_importance = Gauge(
-        'feature_importance',
-        'Importance of each feature in the model',
-        ['feature_name']
-    )
-else:
-    feature_importance = REGISTRY._names_to_collectors['feature_importance']
+# Flag to track if metrics server is started
+server_started = False
+server_lock = threading.Lock()
 
 def start_metrics_server(port=8000):
-    """Start the Prometheus metrics server"""
-    try:
-        # Check if the server is already running
-        if hasattr(start_metrics_server, 'started') and start_metrics_server.started:
-            logging.info(f'Metrics server already running on port {port}')
-            return
-            
+    """Start Prometheus metrics server"""
+    global server_started
+    
+    with server_lock:
+        if not server_started:
+            try:
         start_http_server(port)
-        start_metrics_server.started = True
-        logging.info(f'Metrics server started on port {port}')
+                server_started = True
+                with open(LOG_FILE, 'a') as f:
+                    f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Metrics server started on port {port}\n")
     except Exception as e:
-        logging.error(f'Failed to start metrics server: {str(e)}')
-        raise
+                with open(LOG_FILE, 'a') as f:
+                    f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Error starting metrics server: {str(e)}\n")
 
-# Set the initial state
-start_metrics_server.started = False
+def update_model_metrics(model_name, accuracy, memory_usage):
+    """Update model performance metrics"""
+    MODEL_ACCURACY.labels(model_name=model_name).set(accuracy)
+    MODEL_MEMORY_USAGE.labels(model_name=model_name).set(memory_usage)
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Updated metrics for model {model_name}: accuracy={accuracy}, memory={memory_usage}\n")
 
-def update_model_metrics(model_name, accuracy, memory_usage, gpu_utilization=None):
-    """Update model-related metrics"""
-    try:
-        model_accuracy.labels(model_name=model_name).set(accuracy)
-        model_memory_usage.labels(model_name=model_name).set(memory_usage)
-        
-        if gpu_utilization is not None:
-            for gpu_id, utilization in enumerate(gpu_utilization):
-                model_gpu_utilization.labels(gpu_id=str(gpu_id)).set(utilization)
-                
-    except Exception as e:
-        logging.error(f'Failed to update model metrics: {str(e)}')
-        raise
+def record_prediction(model_name, duration, success):
+    """Record a prediction event"""
+    PREDICTION_DURATION.labels(model_name=model_name).observe(duration)
+    PREDICTION_COUNT.labels(model_name=model_name, success=str(success)).inc()
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Prediction recorded: model={model_name}, duration={duration}, success={success}\n")
 
-def record_prediction(model_name, duration, success=True):
-    """Record a model prediction"""
-    try:
-        status = 'success' if success else 'error'
-        model_predictions_total.labels(
-            model_name=model_name,
-            status=status
-        ).inc()
-        
-        model_prediction_duration.labels(
-            model_name=model_name
-        ).observe(duration)
-        
-    except Exception as e:
-        logging.error(f'Failed to record prediction: {str(e)}')
-        raise
-
-def record_prediction_result(result, confidence):
-    """Record a prediction result"""
-    prediction_results_total.labels(result=result).inc()
-    prediction_confidence.labels(result=result).observe(confidence)
-
-def set_model_version(version, deployment_time):
-    """Set model version info"""
-    model_version.labels(version=version, deployment_time=deployment_time).set(1)
+def record_batch_size(size):
+    """Record batch size for predictions"""
+    BATCH_SIZE.observe(size)
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Batch size recorded: {size}\n")
 
 def update_gpu_memory():
-    """Update GPU memory usage"""
+    """Update GPU memory usage metrics if GPU is available"""
     try:
         import tensorflow as tf
         gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
-            # Get GPU memory usage (this will only work with TensorFlow)
-            gpu_mem_info = tf.config.experimental.get_memory_info('GPU:0')
-            gpu_memory_usage.set(gpu_mem_info.get('current', 0))
-    except:
-        # If there's an error, just set to 0
-        gpu_memory_usage.set(0)
         
-def record_batch_size(size):
-    """Record batch size"""
-    batch_size.observe(size) 
+        if gpus:
+            for i, gpu in enumerate(gpus):
+                # Try to get memory info if available
+                try:
+                    gpu_info = tf.config.experimental.get_memory_info(f'GPU:{i}')
+                    if gpu_info and 'current' in gpu_info:
+                        GPU_MEMORY_USAGE.labels(device=f"gpu_{i}").set(gpu_info['current'])
+                        with open(LOG_FILE, 'a') as f:
+                            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - GPU {i} memory usage: {gpu_info['current']} bytes\n")
+    except:
+                    pass
+    except Exception as e:
+        with open(LOG_FILE, 'a') as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Error updating GPU metrics: {str(e)}\n")
+
+def record_prediction_result(result, confidence=0.0):
+    """Record prediction result type"""
+    PREDICTION_RESULT.labels(result=result).inc()
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Prediction result: {result} (confidence: {confidence})\n")
+
+def set_model_version(version, deployment_time):
+    """Set model version information"""
+    MODEL_VERSION.labels(version=version, deployment_time=deployment_time).set(1)
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - Model version: {version}, deployment time: {deployment_time}\n") 

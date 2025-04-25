@@ -1,0 +1,16 @@
+{
+  "name": "neurashield-chaincode",
+  "version": "1.0.0",
+  "description": "NeuraShield chaincode for managing AI model access and verification",
+  "main": "index.js",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "fabric-contract-api": "^2.5.4",
+    "fabric-shim": "^2.5.4"
+  }
+} 
