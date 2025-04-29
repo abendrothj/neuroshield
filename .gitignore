@@ -293,3 +293,145 @@ site/
 monitoring/data/
 monitoring/grafana/data/
 monitoring/prometheus/data/
+
+# Hyperledger Fabric specific
+channel-artifacts/
+crypto-config/
+*.tar.gz
+!docs/examples/*.tar.gz
+backend/chaincode/vendor/
+backend/chaincode/go.sum
+backend/chaincode/go.mod
+fabric-setup/fabric-samples/
+fabric-setup/bin/
+fabric-setup/config/
+fabric-setup/scripts/
+
+# Python development
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+.hypothesis/
+
+# Project specific
+temp/
+output/
+logs/
+*.log
+*.model
+*.h5
+*.pb
+*.ckpt.*
+*.pth
+*.onnx
+*.tflite
+*.mlmodel
+*.mlpackage
+*.keras
+*.hdf5
+*.weights
+*.index
+*.meta
+*.data-00000-of-00001
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+*.code-workspace
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+env.bak/
+venv.bak/
+
+# Docker
+.docker/
+docker-compose.override.yml
+*.dockerfile
+docker-compose.*.yml
+!docker-compose.yml
+
+# Kubernetes
+k8s/secrets/
+k8s/config/
+*.kubeconfig
+minikube*
+
+# Monitoring
+monitoring/prometheus/data/
+monitoring/grafana/data/
+monitoring/alertmanager/data/
+
+# Data directories
+data/
+reports/
+*.csv
+*.jsonl
+*.parquet
+*.feather
+
+# Backup files
+backup-data/
+*.tar.gz
+*.zip
+*.7z
+*.rar
+
+# Documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+*.aux
+*.out
+*.toc
+
+# Cert files
+*.crt
+*.key
+*.csr
+*.pem
+*.srl
+
+# Except for example certs in docs
+!docs/examples/*.crt
+!docs/examples/*.key
