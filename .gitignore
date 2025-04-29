@@ -435,3 +435,25 @@ docs/_templates/
 # Except for example certs in docs
 !docs/examples/*.crt
 !docs/examples/*.key
+
+# Hyperledger Fabric CA specific
+blockchain/network/organizations/fabric-ca/**/msp/keystore/
+blockchain/network/organizations/fabric-ca/**/msp/signcerts/
+blockchain/network/organizations/fabric-ca/**/msp/cacerts/
+blockchain/network/organizations/fabric-ca/**/msp/tlscacerts/
+blockchain/network/organizations/fabric-ca/**/msp/intermediatecerts/
+blockchain/network/organizations/fabric-ca/**/msp/crls/
+blockchain/network/organizations/fabric-ca/**/msp/admincerts/
+blockchain/network/organizations/fabric-ca/**/msp/user/
+blockchain/network/organizations/fabric-ca/**/msp/IssuerPublicKey
+blockchain/network/organizations/fabric-ca/**/msp/IssuerRevocationPublicKey
+blockchain/network/organizations/fabric-ca/**/msp/config.yaml
+blockchain/network/organizations/fabric-ca/**/fabric-ca-server.db
+blockchain/network/organizations/fabric-ca/**/ca-cert.pem
+blockchain/network/organizations/fabric-ca/**/IssuerPublicKey
+blockchain/network/organizations/fabric-ca/**/IssuerRevocationPublicKey
+blockchain/network/organizations/fabric-ca/**/tls-cert.pem
+blockchain/network/organizations/fabric-ca/**/msp/keystore/*_sk
+blockchain/network/organizations/fabric-ca/**/msp/keystore/*.key
+blockchain/network/organizations/fabric-ca/**/msp/keystore/priv_sk
+blockchain/network/organizations/fabric-ca/**/msp/keystore/key.pem
