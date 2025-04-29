@@ -1,63 +1,58 @@
-/*
- * Enrolls an admin user to the wallet
+/**
+ * Enrollment script for NeuraShield admin user
+ * 
+ * This script enrolls the admin user for NeuraShield blockchain integration
+ * using existing MSP materials from the running Fabric network.
  */
 
-const fs = require('fs');
+const identityManager = require('./identity-manager');
 const path = require('path');
-const FabricCAServices = require('fabric-ca-client');
+const fs = require('fs');
 const { Wallets } = require('fabric-network');
+
+// Path for the wallet directory
+const walletPath = path.join(__dirname, 'wallet');
 
 async function main() {
   try {
-    // Create a new file system based wallet for managing identities.
-    const walletPath = path.join(__dirname, 'wallet');
-    const wallet = await Wallets.newFileSystemWallet(walletPath);
-    console.log(`Wallet path: ${walletPath}`);
-
-    // Check if admin identity exists
-    const identity = await wallet.get('admin');
-    if (identity) {
-      console.log('An identity for the admin user "admin" already exists in the wallet');
-      return;
-    }
-
-    // Copy the MSP materials from the test-network to the wallet
-    const mspPath = '/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp';
+    console.log('Starting admin enrollment process...');
     
-    if (!fs.existsSync(mspPath)) {
-      console.error(`MSP path not found: ${mspPath}`);
-      return;
+    // Create wallet directory if it doesn't exist
+    if (!fs.existsSync(walletPath)) {
+      fs.mkdirSync(walletPath, { recursive: true });
+      console.log(`Created wallet directory at ${walletPath}`);
     }
-
-    // Read the certificate and private key
-    const certPath = path.join(mspPath, 'signcerts', 'cert.pem');
-    const keyDir = path.join(mspPath, 'keystore');
-    console.log(`Looking for key files in: ${keyDir}`);
-    const keyFiles = fs.readdirSync(keyDir);
-    console.log(`Found keystore files: ${keyFiles.join(', ')}`);
-    const keyPath = path.join(keyDir, keyFiles[0]);
-
-    const cert = fs.readFileSync(certPath).toString();
-    const key = fs.readFileSync(keyPath).toString();
-
-    // Load the MSP ID from the config.json
-    const mspId = 'Org1MSP';
-
-    // Store the identity in the wallet
-    const x509Identity = {
-      credentials: {
-        certificate: cert,
-        privateKey: key,
-      },
-      mspId: mspId,
-      type: 'X.509',
-    };
-
-    await wallet.put('admin', x509Identity);
-    console.log('Successfully enrolled admin user "admin" and imported it into the wallet');
-
+    
+    // Enroll admin user
+    try {
+      console.log('Trying to enroll admin from MSP materials...');
+      await identityManager.enrollAdminFromMSP();
+    } catch (mspError) {
+      console.warn(`MSP enrollment failed: ${mspError.message}`);
+      console.log('Trying CA enrollment as fallback...');
+      
+      try {
+        await identityManager.enrollAdminWithCA();
+      } catch (caError) {
+        console.error(`CA enrollment also failed: ${caError.message}`);
+        throw new Error('All enrollment methods failed');
+      }
+    }
+    
+    // Verify the admin identity was created
+    const wallet = await Wallets.newFileSystemWallet(walletPath);
+    const adminIdentity = await wallet.get('admin');
+    
+    if (adminIdentity) {
+      console.log('Admin enrollment successful!');
+      console.log('You can now start the NeuraShield server');
+    } else {
+      console.error('Enrollment appeared to succeed but no identity was found in wallet');
+      process.exit(1);
+    }
+    
   } catch (error) {
-    console.error(`Failed to enroll admin user "admin": ${error}`);
+    console.error(`Failed to enroll admin user: ${error}`);
     process.exit(1);
   }
 }

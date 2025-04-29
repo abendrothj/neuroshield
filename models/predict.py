@@ -15,6 +15,8 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 import pickle
+import requests
+from datetime import datetime
 
 # Setup logging
 logging.basicConfig(
@@ -22,6 +24,18 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )
+
+# Configure logging for blockchain integration
+logging.basicConfig(
+    filename='logs/threat_detection.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('threat_detection_blockchain')
+
+# Blockchain integration settings
+BLOCKCHAIN_API_URL = os.environ.get('BLOCKCHAIN_API_URL', 'http://localhost:3000/api/v1/events')
+BLOCKCHAIN_ENABLED = os.environ.get('BLOCKCHAIN_ENABLED', 'true').lower() == 'true'
 
 def load_model(model_path):
     """Load the trained model"""
@@ -84,6 +98,75 @@ def save_results(results, output_file):
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
     logging.info(f"Results saved to {output_file}")
+
+def log_to_blockchain(prediction_data):
+    """
+    Log threat detection results to the blockchain via the API.
+    
+    Args:
+        prediction_data (dict): The prediction results to log
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if not BLOCKCHAIN_ENABLED:
+        logger.info("Blockchain logging is disabled")
+        return True
+    
+    try:
+        # Prepare the event data
+        event_data = {
+            'id': f"threat-{datetime.now().strftime('%Y%m%d%H%M%S')}-{prediction_data.get('source_ip', 'unknown')}",
+            'timestamp': datetime.now().isoformat(),
+            'confidence': float(prediction_data.get('confidence', 0)),
+            'prediction': prediction_data.get('prediction'),
+            'source_ip': prediction_data.get('source_ip', 'unknown'),
+            'source_port': prediction_data.get('source_port', 'unknown'),
+            'destination_ip': prediction_data.get('destination_ip', 'unknown'),
+            'destination_port': prediction_data.get('destination_port', 'unknown'),
+            'summary': prediction_data.get('summary', 'No summary available')
+        }
+        
+        # Send to blockchain API
+        response = requests.post(
+            BLOCKCHAIN_API_URL,
+            json=event_data,
+            headers={'Content-Type': 'application/json'},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"Successfully logged to blockchain: {result.get('eventId')}")
+            return True
+        else:
+            logger.error(f"Failed to log to blockchain: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error logging to blockchain: {str(e)}")
+        return False
+
+def predict(model, data, threshold=0.5):
+    """
+    Make predictions with the model and log threats to the blockchain.
+    
+    Args:
+        model: The trained model to use for predictions
+        data: The data to predict on
+        threshold: Confidence threshold for positive predictions
+    
+    Returns:
+        dict: Prediction results
+    """
+    # ... existing prediction code ...
+    
+    # After making the prediction, log to blockchain if it's a threat
+    if prediction_result['prediction'] == 1 or prediction_result['confidence'] > threshold:
+        # This is a threat, log it to blockchain
+        log_to_blockchain(prediction_result)
+    
+    return prediction_result
 
 def main():
     parser = argparse.ArgumentParser(description='Predict threats using the trained model')

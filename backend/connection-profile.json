@@ -1,5 +1,5 @@
 {
-  "name": "neura-shield-network",
+  "name": "neurashield-network",
   "version": "1.0.0",
   "client": {
     "organization": "Org1",
@@ -13,11 +13,17 @@
     },
     "discovery": {
       "enabled": false
+    },
+    "tlsEnable": true,
+    "tlsClientCerts": {
+      "verifyHostname": false
     }
   },
   "channels": {
     "neurashield-channel": {
-      "orderers": ["orderer.example.com"],
+      "orderers": [
+        "orderer.example.com"
+      ],
       "peers": {
         "peer0.org1.example.com": {
           "endorsingPeer": true,
@@ -37,17 +43,27 @@
   "organizations": {
     "Org1": {
       "mspid": "Org1MSP",
-      "peers": ["peer0.org1.example.com"],
-      "certificateAuthorities": ["ca.org1.example.com"]
+      "peers": [
+        "peer0.org1.example.com"
+      ],
+      "certificateAuthorities": [
+        "ca.org1.example.com"
+      ]
     },
     "Org2": {
       "mspid": "Org2MSP",
-      "peers": ["peer0.org2.example.com"],
-      "certificateAuthorities": ["ca.org2.example.com"]
+      "peers": [
+        "peer0.org2.example.com"
+      ],
+      "certificateAuthorities": [
+        "ca.org2.example.com"
+      ]
     },
     "OrdererOrg": {
       "mspid": "OrdererMSP",
-      "orderers": ["orderer.example.com"]
+      "orderers": [
+        "orderer.example.com"
+      ]
     }
   },
   "orderers": {
@@ -107,4 +123,3 @@
     }
   }
 }
-

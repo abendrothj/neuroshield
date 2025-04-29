@@ -72,6 +72,7 @@ frontend/next-env.d.ts
 .Trashes
 ehthumbs.db
 Thumbs.db
+*.Zone.Identifier
 
 # Fabric
 backend/fabric-samples/
@@ -151,6 +152,12 @@ minikube*
 *.index
 *.meta
 *.data-00000-of-00001
+models/models/*
+!models/models/.gitkeep
+models/serving/*
+!models/serving/.gitkeep
+*.pkl
+*.joblib
 
 # Temporary files
 *.tmp

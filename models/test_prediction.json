@@ -1,0 +1,1 @@
+{ "source_ip": "192.168.1.100", "destination_ip": "10.0.0.1", "source_port": "45678", "destination_port": "80", "protocol": "TCP", "bytes_sent": 1024, "bytes_received": 2048, "duration": 0.5, "packets": 10, "prediction": "Attack", "confidence": 0.95, "summary": "Test prediction for integration testing" }
