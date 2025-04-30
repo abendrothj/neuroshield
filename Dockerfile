@@ -103,68 +103,32 @@ CMD ["/app/startup.sh"]
 
 FROM python:3.10-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements
-COPY requirements.txt /app/
-
-# Install dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
-    tcpdump \
-    libpcap-dev \
+    build-essential \
     libssl-dev \
-    python3-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy model and scripts
-COPY . /app/
+# Copy the application code
+COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/features /app/models
-
-# Expose ports for API and Dashboard
-EXPOSE 8000 8501
-
-# Set environment variables
-ENV PYTHONPATH=/app
+# Set environment variables (these will be overridden at runtime)
+ENV DATA_API_URL=""
+ENV BLOCKCHAIN_API_URL=""
+ENV BLOCKCHAIN_ENABLED="true"
+ENV MONITORING_INTERVAL="5.0"
 ENV PYTHONUNBUFFERED=1
 
-# Create entrypoint script
-RUN echo '#!/bin/bash\n\
-if [ "$1" = "api" ]; then\n\
-    echo "Starting API service..."\n\
-    cd /app && python api.py\n\
-elif [ "$1" = "dashboard" ]; then\n\
-    echo "Starting Dashboard..."\n\
-    cd /app && streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0\n\
-elif [ "$1" = "traffic" ]; then\n\
-    echo "Starting Traffic Processor..."\n\
-    cd /app && python traffic_processor.py --interface $2\n\
-elif [ "$1" = "all" ]; then\n\
-    echo "Starting all services..."\n\
-    cd /app && python api.py & \n\
-    cd /app && streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0 & \n\
-    wait\n\
-else\n\
-    echo "Available commands:"\n\
-    echo "  api - Start the API service"\n\
-    echo "  dashboard - Start the Dashboard"\n\
-    echo "  traffic - Start the Traffic Processor (requires interface name)"\n\
-    echo "  all - Start API and Dashboard"\n\
-    exit 1\n\
-fi' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
-
-# Set entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
-
-# Default command
-CMD ["all"] 
+# Run the daemon
+CMD ["python", "-m", "daemon.threat_monitor"] 

@@ -3,13 +3,13 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Copy package files
-COPY backend/package.json backend/package-lock.json ./
+COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install --production
 
 # Copy source code
-COPY backend/ ./
+COPY . .
 
 # Create wallet directory
 RUN mkdir -p /app/wallet
@@ -22,7 +22,7 @@ ENV PORT=3001
 EXPOSE 3001
 
 # Start the application
-CMD ["node", "src/index.js"]
+CMD ["node", "src/server.js"]
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

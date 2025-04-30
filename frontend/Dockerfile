@@ -1,43 +1,44 @@
-FROM node:18-alpine AS builder
+# Build stage
+FROM node:18-alpine as builder
 
 WORKDIR /app
 
 # Copy package files
-COPY package.json pnpm-lock.yaml ./
-
-# Install pnpm
-RUN npm install -g pnpm
+COPY package.json package-lock.json* ./
 
 # Install dependencies
-RUN pnpm install
+RUN npm install
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN pnpm build
+RUN npm run build
 
-# Production image
-FROM node:18-alpine AS runner
+# Production stage
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy necessary files from builder
+# Copy built app from builder stage
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/package-lock.json* ./
 COPY --from=builder /app/next.config.mjs ./
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/public ./public
+
+# Install production dependencies only
+RUN npm install --production
+
+# Expose port
+EXPOSE 3000
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Expose port
-EXPOSE 3000
-
 # Start the application
-CMD ["pnpm", "start"]
+CMD ["npm", "start"]
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

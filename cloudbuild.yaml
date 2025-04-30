@@ -1,0 +1,47 @@
+steps:
+# Build the container image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/neurashield-threat-daemon:$COMMIT_SHA', '.']
+
+# Push the container image to Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-threat-daemon:$COMMIT_SHA']
+
+# Deploy container image to Cloud Run
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+  - 'run'
+  - 'deploy'
+  - 'neurashield-threat-daemon'
+  - '--image=gcr.io/$PROJECT_ID/neurashield-threat-daemon:$COMMIT_SHA'
+  - '--region=us-central1'
+  - '--platform=managed'
+  - '--cpu=2'
+  - '--memory=2Gi'
+  - '--timeout=3600s'
+  - '--concurrency=1'
+  - '--set-env-vars=MODEL_PATH=/app/models/trained/threat_detection_model.h5,DATA_SOURCE=api,DATA_API_URL=${_DATA_API_URL},BLOCKCHAIN_API_URL=${_BLOCKCHAIN_API_URL},BLOCKCHAIN_ENABLED=${_BLOCKCHAIN_ENABLED},MONITORING_INTERVAL=5.0'
+  - '--service-account=${_SERVICE_ACCOUNT}'
+  - '--no-allow-unauthenticated'
+
+# Create a latest tag
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag', 'gcr.io/$PROJECT_ID/neurashield-threat-daemon:$COMMIT_SHA', 'gcr.io/$PROJECT_ID/neurashield-threat-daemon:latest']
+
+# Push the latest tag to Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-threat-daemon:latest']
+
+images:
+- 'gcr.io/$PROJECT_ID/neurashield-threat-daemon:$COMMIT_SHA'
+- 'gcr.io/$PROJECT_ID/neurashield-threat-daemon:latest'
+
+substitutions:
+  _DATA_API_URL: 'https://data-api-endpoint.example.com'
+  _BLOCKCHAIN_API_URL: 'https://blockchain-api-endpoint.example.com'
+  _BLOCKCHAIN_ENABLED: 'true'
+  _SERVICE_ACCOUNT: 'neurashield-threat-daemon@${PROJECT_ID}.iam.gserviceaccount.com'
+
+options:
+  logging: CLOUD_LOGGING_ONLY 

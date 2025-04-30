@@ -1,0 +1,25 @@
+[Unit]
+Description=NeuraShield Threat Detection Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=neurashield
+Group=neurashield
+WorkingDirectory=/home/jub/Cursor/neurashield
+ExecStart=/home/jub/Cursor/neurashield/scripts/run_threat_detection_daemon.sh
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+# Ensure proper log handling
+StandardOutput=append:/home/jub/Cursor/neurashield/logs/threat_detection_service.log
+StandardError=append:/home/jub/Cursor/neurashield/logs/threat_detection_service.log
+
+# Security settings
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target 

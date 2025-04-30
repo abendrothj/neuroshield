@@ -1,0 +1,55 @@
+steps:
+# Build the AI service container image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA', '-f', 'models/Dockerfile', '.']
+
+# Push the container image to Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA']
+
+# Deploy container image to Cloud Run
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+  - 'run'
+  - 'deploy'
+  - 'neurashield-ai'
+  - '--image=gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA'
+  - '--region=${_REGION}'
+  - '--platform=managed'
+  - '--cpu=${_CPU}'
+  - '--memory=${_MEMORY}'
+  - '--timeout=3600s'
+  - '--concurrency=1'
+  - '--min-instances=1'
+  - '--max-instances=10'
+  - '--set-env-vars=MODEL_PATH=/app/models/threat_detection_20250420_233903.keras,LOG_DIR=/app/logs,PORT=5000,METRICS_PORT=8000,BLOCKCHAIN_API_URL=${_BLOCKCHAIN_API_URL},BLOCKCHAIN_ENABLED=${_BLOCKCHAIN_ENABLED},TF_FORCE_GPU_ALLOW_GROWTH=true'
+  - '--service-account=${_SERVICE_ACCOUNT}'
+  - '--no-allow-unauthenticated'
+  - '--vpc-connector=${_VPC_CONNECTOR}'
+  - '--vpc-egress=all'
+
+# Create a latest tag
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag', 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA', 'gcr.io/$PROJECT_ID/neurashield-ai:latest']
+
+# Push the latest tag to Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-ai:latest']
+
+images:
+- 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA'
+- 'gcr.io/$PROJECT_ID/neurashield-ai:latest'
+
+substitutions:
+  _REGION: 'us-central1'
+  _CPU: '2'
+  _MEMORY: '4Gi'
+  _BLOCKCHAIN_API_URL: 'https://blockchain-api-endpoint.example.com'
+  _BLOCKCHAIN_ENABLED: 'true'
+  _SERVICE_ACCOUNT: 'neurashield-ai@${PROJECT_ID}.iam.gserviceaccount.com'
+  _VPC_CONNECTOR: 'neurashield-vpc-connector'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8' 

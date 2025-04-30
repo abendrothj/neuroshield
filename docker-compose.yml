@@ -270,6 +270,104 @@ services:
       - ai-service
       - ipfs
 
+  threat-detection-daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neurashield-threat-daemon
+    volumes:
+      - ./logs:/app/logs
+      - ./models/trained:/app/models/trained
+    environment:
+      - MODEL_PATH=/app/models/trained/threat_detection_model.h5
+      - MONITORING_INTERVAL=5.0
+      - DATA_SOURCE=api
+      - DATA_API_URL=http://mock-api:5000/api/v1/network-data
+      - BLOCKCHAIN_API_URL=http://mock-api:5000/api/v1/events
+      - BLOCKCHAIN_ENABLED=true
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - mock-api
+    restart: unless-stopped
+    networks:
+      - neurashield-network
+
+  mock-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    container_name: neurashield-mock-api
+    volumes:
+      - ./logs:/app/logs
+      - ./test:/app/test
+    ports:
+      - "5000:5000"
+    command: python /app/test/mock_api_server.py
+    networks:
+      - neurashield-network
+
+  neurashield-ai:
+    build:
+      context: .
+      dockerfile: ./models/Dockerfile
+    container_name: neurashield-ai
+    ports:
+      - "5000:5000"  # API port
+      - "8000:8000"  # Metrics port
+    volumes:
+      - ./models/data:/app/data
+      - ./models/logs:/app/logs
+      - ./models/models:/app/models
+    environment:
+      - MODEL_PATH=/app/models/threat_detection_20250420_233903.keras
+      - LOG_DIR=/app/logs
+      - PORT=5000
+      - METRICS_PORT=8000
+      - BLOCKCHAIN_API_URL=http://blockchain-adapter:3000/api/v1/events
+      - BLOCKCHAIN_ENABLED=true
+      - TF_FORCE_GPU_ALLOW_GROWTH=true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    depends_on:
+      - blockchain-adapter
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  blockchain-adapter:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: blockchain-adapter
+    ports:
+      - "3000:3000"  # Blockchain adapter API port
+    volumes:
+      - ./backend/logs:/app/logs
+      - ./backend/config:/app/config
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - LOG_LEVEL=info
+      - BLOCKCHAIN_ENDPOINT=http://fabric-gateway:7054
+      - CHANNEL_NAME=mychannel
+      - CHAINCODE_NAME=neurashield
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 volumes:
   ipfs-data:
   prometheus-data:
@@ -283,4 +381,7 @@ volumes:
 
 networks:
   neurashield-network:
+    driver: bridge
+  default:
+    name: neurashield-network
     driver: bridge 
