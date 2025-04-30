@@ -464,3 +464,18 @@ blockchain/network/organizations/fabric-ca/**/msp/keystore/*_sk
 blockchain/network/organizations/fabric-ca/**/msp/keystore/*.key
 blockchain/network/organizations/fabric-ca/**/msp/keystore/priv_sk
 blockchain/network/organizations/fabric-ca/**/msp/keystore/key.pem
+
+# GCP
+*.json.key
+*.p12
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+gcp-credentials.json
+service-account.json
+appengine-generated/
+deploy/
+.gcloudignore
+.gcloudignore.local
