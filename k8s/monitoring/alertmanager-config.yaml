@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-main
+  namespace: monitoring
+type: Opaque
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+      slack_api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'slack-notifications'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'slack-critical'
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - channel: '#alerts'
+        send_resolved: true
+    - name: 'slack-critical'
+      slack_configs:
+      - channel: '#critical-alerts'
+        send_resolved: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: main
+  namespace: monitoring
+spec:
+  replicas: 2
+  version: v0.24.0
+  configSecret: alertmanager-main 

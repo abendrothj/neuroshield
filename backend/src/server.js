@@ -13,7 +13,11 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const blockchainIntegration = require('./blockchain-integration');
 const identityManager = require('../identity-manager');
+const { initObservability } = require('./gcp-observability');
 require('dotenv').config();
+
+// Initialize GCP observability (Trace, Profiler, Error Reporting)
+const { trace, errorReporting, errorReportingMiddleware } = initObservability();
 
 // Setup production logging
 const logger = winston.createLogger({
@@ -77,6 +81,11 @@ const apiLimiter = rateLimit({
 
 // Apply rate limiting to all API routes
 app.use('/api', apiLimiter);
+
+// Add Error Reporting middleware if initialized
+if (errorReportingMiddleware) {
+    app.use(errorReportingMiddleware);
+}
 
 // IPFS configuration
 const ipfs = create({ url: process.env.IPFS_URL || 'http://localhost:5001' });
@@ -647,6 +656,11 @@ app.use((err, req, res, next) => {
         user: req.user ? req.user.id : 'anonymous'
     });
 
+    // Report error to GCP Error Reporting if available
+    if (errorReporting) {
+        errorReporting.report(err);
+    }
+
     // Send safe response to client
     res.status(err.status || 500).json({ 
         error: process.env.NODE_ENV === 'production' 
@@ -683,6 +697,7 @@ async function startServer() {
             Channel Name: ${CHANNEL_NAME}
             Chaincode Name: ${CHAINCODE_NAME}
             Blockchain Enabled: ${process.env.SKIP_BLOCKCHAIN !== 'true'}
+            GCP Observability: ${trace ? 'Enabled' : 'Disabled'}
         `);
 
         // If not skipping blockchain, run the update immediately
@@ -699,10 +714,16 @@ async function startServer() {
             logger.info('Blockchain integration is disabled');
         }
         
+        // Start metrics server on a different port
+        const metricsPort = process.env.METRICS_PORT || 3001;
+        metricsApp.listen(metricsPort, () => {
+            logger.info(`Metrics server running on port ${metricsPort}`);
+        });
+        
         // Start server whether blockchain initialization succeeded or not
         const server = app.listen(PORT, () => {
-    logger.info(`Server running on port ${PORT}`);
-}); 
+            logger.info(`Server running on port ${PORT}`);
+        }); 
 
         // Handle server errors
         server.on('error', (error) => {

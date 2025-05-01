@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fabric-backup
+  namespace: neurashield
+spec:
+  schedule: "0 0 * * *"  # Daily at midnight
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: busybox
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Create backup directory
+              mkdir -p /backup/$(date +%Y%m%d)
+              
+              # Backup ledger data
+              cp -r /var/hyperledger/production/ledgersData/* /backup/$(date +%Y%m%d)/
+              
+              # Backup wallet data
+              cp -r /app/wallet/* /backup/$(date +%Y%m%d)/
+              
+              # Compress backup
+              tar -czf /backup/backup-$(date +%Y%m%d).tar.gz /backup/$(date +%Y%m%d)
+              
+              # Upload to cloud storage
+              gsutil cp /backup/backup-$(date +%Y%m%d).tar.gz gs://neurashield-backups/
+              
+              # Clean up old backups (keep last 7 days)
+              find /backup -type f -mtime +7 -delete
+            volumeMounts:
+            - name: ledger-data
+              mountPath: /var/hyperledger/production/ledgersData
+            - name: wallet-data
+              mountPath: /app/wallet
+            - name: backup-volume
+              mountPath: /backup
+          volumes:
+          - name: ledger-data
+            persistentVolumeClaim:
+              claimName: blockchain-data-pvc
+          - name: wallet-data
+            persistentVolumeClaim:
+              claimName: blockchain-data-pvc
+          - name: backup-volume
+            persistentVolumeClaim:
+              claimName: backup-pvc
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: neurashield
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-sa
+  namespace: neurashield
+  annotations:
+    iam.gke.io/gcp-service-account: backup-sa@supple-defender-458307-i7.iam.gserviceaccount.com 

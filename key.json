@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "supple-defender-458307-i7",
+  "private_key_id": "73cba94603ae348b40cecf5d6a93666523bede81",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFVbOvfEvp/T7m\nF2Waul2YUDc+3XAUDue8HdxLyHk7/uhoZtG4OGsTb2UJUk88s/NVSmvAOle3crUU\n5i66CD89i0t1II28VXaZmPZSZg3i2nEqAV4lqm01bCAOkhuswk5QqRcwEKwVGoks\nf5meOiDjbl0Xg9t6VFyYGFU5riLS2+tJWHFQkdrZMae9TE/UnTgnMqJaEixn44jJ\naBvXQ/gukMDvcvDa9JjMp/YVkGzOhAzxX7ZS6I2b/p/SuhtSKzrKXw3aMUcDOIEM\nxNXFTzz0K9G5F5gwVsAlnbY2d7OumCf1uhFpPwlc3j5xacwQ+0s7J2aERy0ri1I3\nttsmmWuHAgMBAAECggEACXloY5wBnw3YF77201twQ/BR/rQt/eCLUrZSTdclrvI5\noU2ScxhOV8QI404u3Li9DZLBopyKepXIyOSWSLs9ogxOhqSV+X1W8N/tr54Tu5kG\nRuCC7ycEEEUNMvXj20MG9ItxwA6E3IyGGntT2ktrKdAyKv9bKb/kJC9C5D6OkHYF\n7Zm6VEMWqakZiqZo88sBiju6gcQa35HcHDtoPZLAX2ModNVleNueNdl7cSJCZzZI\n2NqbTqAzi9KOjtUPFKfhkpeoPIK7wjOhRKtLWK9QykSMOG6dJhAO413jiO6U6Qf7\nw9G2CvUiwOdGsh8Mteh6mMxv5G2LXmhOwrKQAgMl9QKBgQDxwx/ls34xROKJpgUt\nQcKVKZdiROMua5yM+yoDwttp97bnuN5uK3DYw/lTOZQLi/z/NDXCkSIL0x/oDaqT\niqsgf47619EVKg7A820Z3GxzsyJPGr4amUT/D4A0ntO2Tg95LU93FqxLxQRkPn5x\neH79vWlCZ/bdE+/9amwWnCb8qwKBgQDQ9MbZo404gk6c6UXIxq8U9PXdt/nvFRK8\nVlDuYloovyrlYJLwlSWHiChzDP0wxYCUqeKgdz+t1tsGk4C1piVTp0KP4jNDD676\n8FUB1y1GA2EYcfC7kn8Q01Yuf1hWaqwCelpsYYdqEt2BZw0hz0Qp6gfMFv1h9Gdz\nT8SBsoEUlQKBgQCVdCyJ0XZXeuAYe9uDaL2jfHyrMS7ICZpTxQjqHlGJpqsZgL1w\nmcY/GpdNDbEpmjaihWIej53edXup9pjWcMjtZC29gCEu1jscqN9vN0aMF9dD06Jl\nyw5OJwT4gp8aehMytAIF+qw0guz+E2wTNYw7zBYACUkgzix0GpALQikP1QKBgHdx\nVDGYMeN5aSJ8na1VFUOvetOQlMe7jggmdwCtK8ha7lRLzfLD7r34cNbDN/+nBgb0\nzVzYjYf7ZxvtOQecv32AAKZqsM7Gqkk7E/yHWZPJ3riweOFfrk6Z34uYs5BCTazk\n78dAQL27pu6PT4xiBB7JbkeVZKWXpYLet/9DYFG5AoGAboUKpwY05gWLLPf5p35g\nneRwaLFrmsxQYa3uKA1evfcs4DQI97HGjuRsYOYGxpY/69L8t2SoYFgPOLvk29y0\nyDgs3VHIWcJ+egumv+ty/wNseue74mqVc60OYo4XSYB3FHV/7zgr6olP4o2U9Gxo\ngkc/3pH8fsMM3+zQpclSyDw=\n-----END PRIVATE KEY-----\n",
+  "client_email": "neurashield-monitoring-sa@supple-defender-458307-i7.iam.gserviceaccount.com",
+  "client_id": "103590905494653780361",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/neurashield-monitoring-sa%40supple-defender-458307-i7.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

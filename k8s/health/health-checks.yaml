@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fabric-health-config
+  namespace: neurashield
+data:
+  health-script.sh: |
+    #!/bin/sh
+    peer channel list > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo "OK"
+      exit 0
+    else
+      echo "ERROR"
+      exit 1
+    fi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurashield-blockchain
+  namespace: neurashield
+spec:
+  selector:
+    matchLabels:
+      app: fabric-peer
+  template:
+    metadata:
+      labels:
+        app: fabric-peer
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: fabric-peer
+        image: hyperledger/fabric-peer:2.4
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - /scripts/health-script.sh
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - /scripts/health-script.sh
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+        - name: health-scripts
+          mountPath: /scripts
+      volumes:
+      - name: health-scripts
+        configMap:
+          name: fabric-health-config
+          defaultMode: 0755 

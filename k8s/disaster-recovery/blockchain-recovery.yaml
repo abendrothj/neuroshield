@@ -1,0 +1,129 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fabric-recovery
+  namespace: neurashield
+spec:
+  template:
+    spec:
+      containers:
+      - name: recovery
+        image: busybox
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Download latest backup
+          gsutil cp gs://neurashield-backups/backup-$(date +%Y%m%d).tar.gz /recovery/
+          
+          # Extract backup
+          tar -xzf /recovery/backup-$(date +%Y%m%d).tar.gz -C /recovery/
+          
+          # Restore ledger data
+          cp -r /recovery/backup-$(date +%Y%m%d)/ledgersData/* /var/hyperledger/production/ledgersData/
+          
+          # Restore wallet data
+          cp -r /recovery/backup-$(date +%Y%m%d)/wallet/* /app/wallet/
+          
+          # Verify restoration
+          if [ -f "/var/hyperledger/production/ledgersData/chains/chains/neurashield-channel/blockfile_000000" ]; then
+            echo "Recovery successful"
+            exit 0
+          else
+            echo "Recovery failed"
+            exit 1
+          fi
+        volumeMounts:
+        - name: ledger-data
+          mountPath: /var/hyperledger/production/ledgersData
+        - name: wallet-data
+          mountPath: /app/wallet
+        - name: recovery-volume
+          mountPath: /recovery
+      volumes:
+      - name: ledger-data
+        persistentVolumeClaim:
+          claimName: blockchain-data-pvc
+      - name: wallet-data
+        persistentVolumeClaim:
+          claimName: blockchain-data-pvc
+      - name: recovery-volume
+        persistentVolumeClaim:
+          claimName: recovery-pvc
+      restartPolicy: Never
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: recovery-pvc
+  namespace: neurashield
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: recovery-sa
+  namespace: neurashield
+  annotations:
+    iam.gke.io/gcp-service-account: recovery-sa@supple-defender-458307-i7.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: recovery-procedure
+  namespace: neurashield
+data:
+  recovery-steps.md: |
+    # Blockchain Recovery Procedure
+
+    ## Prerequisites
+    - Access to GCP project
+    - Backup files in GCS bucket
+    - Kubernetes cluster access
+    - Service account permissions
+
+    ## Recovery Steps
+
+    1. **Stop Blockchain Services**
+       ```bash
+       kubectl scale deployment neurashield-blockchain --replicas=0 -n neurashield
+       ```
+
+    2. **Initiate Recovery Job**
+       ```bash
+       kubectl apply -f k8s/disaster-recovery/blockchain-recovery.yaml
+       ```
+
+    3. **Monitor Recovery**
+       ```bash
+       kubectl logs -f job/fabric-recovery -n neurashield
+       ```
+
+    4. **Verify Recovery**
+       ```bash
+       kubectl exec -it <blockchain-pod> -n neurashield -- peer channel list
+       ```
+
+    5. **Restart Services**
+       ```bash
+       kubectl scale deployment neurashield-blockchain --replicas=1 -n neurashield
+       ```
+
+    ## Verification Steps
+
+    1. Check blockchain status
+    2. Verify transaction history
+    3. Test new transactions
+    4. Monitor system health
+
+    ## Rollback Procedure
+
+    If recovery fails:
+    1. Scale down services
+    2. Restore from previous backup
+    3. Contact support team 

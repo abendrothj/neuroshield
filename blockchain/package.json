@@ -1,0 +1,27 @@
+{
+  "name": "neurashield-blockchain",
+  "version": "1.0.0",
+  "description": "Blockchain service for NeuraShield",
+  "main": "src/blockchain-service.js",
+  "scripts": {
+    "start": "node src/blockchain-service.js",
+    "dev": "nodemon src/blockchain-service.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "fabric-network": "^2.2.18",
+    "helmet": "^7.0.0",
+    "winston": "^3.10.0"
+  },
+  "devDependencies": {
+    "jest": "^29.6.2",
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "private": true
+} 

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gcp-config
+  namespace: neurashield
+data:
+  project_id: "supple-defender-458307-i7"  # GCP project ID
+  service_version: "1.0.0"
+  gcp_region: "us-central1"  # Replace with your preferred GCP region
+  cloud_trace_sampling_rate: "1.0"  # 100% sampling rate for development, reduce for production
+  profiler_enabled: "true"
+  error_reporting_enabled: "true" 

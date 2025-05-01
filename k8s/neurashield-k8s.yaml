@@ -1,0 +1,482 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: neurashield-sa
+  namespace: neurashield
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neurashield-config
+  namespace: neurashield
+data:
+  BACKEND_URL: "http://neurashield-backend.neurashield.svc.cluster.local:3001"
+  BLOCKCHAIN_ENABLED: "true"
+  NODE_ENV: "production"
+  IPFS_ENABLED: "true"
+  IPFS_URL: "http://neurashield-ipfs.neurashield.svc.cluster.local:5001"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: blockchain-data-pvc
+  namespace: neurashield
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-models-pvc
+  namespace: neurashield
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ipfs-data-pvc
+  namespace: neurashield
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: blockchain-secret
+  namespace: neurashield
+type: Opaque
+data:
+  # Base64 encoded values (echo -n "admin" | base64)
+  USER_ID: YWRtaW4=
+  # Add other secrets like certificates and keys as needed
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurashield-backend
+  namespace: neurashield
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurashield-backend
+  template:
+    metadata:
+      labels:
+        app: neurashield-backend
+    spec:
+      serviceAccountName: neurashield-sa
+      containers:
+      - name: backend
+        image: gcr.io/supple-defender-458307-i7/neurashield-backend:latest
+        ports:
+        - containerPort: 3001
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3001"
+        - name: SKIP_BLOCKCHAIN
+          value: "false"
+        - name: AI_SERVICE_URL
+          value: "http://neurashield-ai.neurashield.svc.cluster.local:5000"
+        - name: BLOCKCHAIN_SERVICE_URL
+          value: "http://neurashield-blockchain.neurashield.svc.cluster.local:8080"
+        - name: IPFS_ENABLED
+          value: "true"
+        - name: IPFS_URL
+          value: "http://neurashield-ipfs.neurashield.svc.cluster.local:5001"
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-backend
+  namespace: neurashield
+spec:
+  selector:
+    app: neurashield-backend
+  ports:
+  - port: 3001
+    targetPort: 3001
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurashield-frontend
+  namespace: neurashield
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurashield-frontend
+  template:
+    metadata:
+      labels:
+        app: neurashield-frontend
+    spec:
+      serviceAccountName: neurashield-sa
+      containers:
+      - name: frontend
+        image: gcr.io/supple-defender-458307-i7/neurashield-frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://neurashield-backend.neurashield.svc.cluster.local:3001"
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-frontend
+  namespace: neurashield
+spec:
+  selector:
+    app: neurashield-frontend
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: LoadBalancer
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurashield-blockchain
+  namespace: neurashield
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurashield-blockchain
+  template:
+    metadata:
+      labels:
+        app: neurashield-blockchain
+    spec:
+      serviceAccountName: neurashield-sa
+      volumes:
+      - name: blockchain-data
+        persistentVolumeClaim:
+          claimName: blockchain-data-pvc
+      - name: config-volume
+        configMap:
+          name: blockchain-config
+      containers:
+      - name: blockchain
+        image: gcr.io/supple-defender-458307-i7/neurashield-blockchain:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "8080"
+        - name: CHANNEL_NAME
+          value: "neurashield-channel"
+        - name: CHAINCODE_NAME
+          value: "neurashield"
+        - name: NETWORK_CONFIG_PATH
+          value: "/app/config/connection-profile.json"
+        - name: WALLET_PATH
+          value: "/app/wallet"
+        - name: USER_ID
+          valueFrom:
+            secretKeyRef:
+              name: blockchain-secret
+              key: USER_ID
+        volumeMounts:
+        - name: blockchain-data
+          mountPath: /app/wallet
+        - name: config-volume
+          mountPath: /app/config
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-blockchain
+  namespace: neurashield
+spec:
+  selector:
+    app: neurashield-blockchain
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurashield-ai
+  namespace: neurashield
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurashield-ai
+  template:
+    metadata:
+      labels:
+        app: neurashield-ai
+    spec:
+      serviceAccountName: neurashield-sa
+      volumes:
+      - name: ai-models
+        persistentVolumeClaim:
+          claimName: ai-models-pvc
+      containers:
+      - name: ai-service
+        image: gcr.io/supple-defender-458307-i7/neurashield-ai:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MODEL_PATH
+          value: "/app/models/threat_detection_model.h5"
+        - name: LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: ai-models
+          mountPath: /app/models
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 60
+          periodSeconds: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-ai
+  namespace: neurashield
+spec:
+  selector:
+    app: neurashield-ai
+  ports:
+  - port: 5000
+    targetPort: 5000
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurashield-ipfs
+  namespace: neurashield
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurashield-ipfs
+  template:
+    metadata:
+      labels:
+        app: neurashield-ipfs
+    spec:
+      serviceAccountName: neurashield-sa
+      volumes:
+      - name: ipfs-data
+        persistentVolumeClaim:
+          claimName: ipfs-data-pvc
+      containers:
+      - name: ipfs
+        image: ipfs/kubo:latest
+        ports:
+        - containerPort: 5001
+          name: api
+        - containerPort: 8080
+          name: gateway
+        volumeMounts:
+        - name: ipfs-data
+          mountPath: /data/ipfs
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          tcpSocket:
+            port: 5001
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        readinessProbe:
+          exec:
+            command:
+            - ipfs
+            - id
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurashield-ipfs
+  namespace: neurashield
+spec:
+  selector:
+    app: neurashield-ipfs
+  ports:
+  - port: 5001
+    targetPort: 5001
+    name: api
+  - port: 8080
+    targetPort: 8080
+    name: gateway
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blockchain-config
+  namespace: neurashield
+data:
+  connection-profile.json: |
+    {
+      "name": "neurashield-network",
+      "version": "1.0.0",
+      "client": {
+        "organization": "Org1",
+        "connection": {
+          "timeout": {
+            "peer": {
+              "endorser": "300"
+            },
+            "orderer": "300"
+          }
+        }
+      },
+      "organizations": {
+        "Org1": {
+          "mspid": "Org1MSP",
+          "peers": ["peer0.org1.example.com"],
+          "certificateAuthorities": ["ca.org1.example.com"]
+        }
+      },
+      "peers": {
+        "peer0.org1.example.com": {
+          "url": "grpcs://blockchain-network.example.com:7051",
+          "tlsCACerts": {
+            "path": "/app/config/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+          },
+          "grpcOptions": {
+            "ssl-target-name-override": "peer0.org1.example.com",
+            "hostnameOverride": "peer0.org1.example.com"
+          }
+        }
+      },
+      "certificateAuthorities": {
+        "ca.org1.example.com": {
+          "url": "https://blockchain-network.example.com:7054",
+          "caName": "ca.org1.example.com",
+          "tlsCACerts": {
+            "path": "/app/config/crypto-config/peerOrganizations/org1.example.com/ca/ca.org1.example.com-cert.pem"
+          },
+          "httpOptions": {
+            "verify": false
+          }
+        }
+      }
+    } 

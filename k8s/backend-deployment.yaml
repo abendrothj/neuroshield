@@ -19,6 +19,9 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 3001
+          name: http
+        - containerPort: 3002
+          name: metrics
         resources:
           requests:
             cpu: "100m"
@@ -31,10 +34,28 @@ spec:
           value: "production"
         - name: PORT
           value: "3001"
+        - name: METRICS_PORT
+          value: "3002"
         - name: AI_SERVICE_URL
           value: "http://neurashield-ai:5000"
         - name: IPFS_URL
           value: "http://ipfs:5001"
+        # GCP environment variables
+        - name: GCP_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: gcp-config
+              key: project_id
+        - name: SERVICE_NAME
+          value: "neurashield-backend"
+        - name: SERVICE_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: gcp-config
+              key: service_version
+        # Get service account credentials from secret
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/var/run/secrets/google/key.json"
         livenessProbe:
           httpGet:
             path: /health
@@ -64,12 +85,19 @@ spec:
           mountPath: /app/config
         - name: logs-volume
           mountPath: /app/logs
+        - name: google-cloud-key
+          mountPath: /var/run/secrets/google
+          readOnly: true
       volumes:
       - name: config-volume
         configMap:
           name: backend-config
       - name: logs-volume
         emptyDir: {}
+      - name: google-cloud-key
+        secret:
+          secretName: google-cloud-key
+          optional: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

@@ -6,32 +6,47 @@
     "connection": {
       "timeout": {
         "peer": {
-          "endorser": "300"
+          "endorser": "300",
+          "eventHub": "300",
+          "eventReg": "300"
         },
         "orderer": "300"
       }
     },
     "discovery": {
-      "enabled": false
+      "enabled": true,
+      "asLocalhost": false
     },
     "tlsEnable": true,
     "tlsClientCerts": {
-      "verifyHostname": false
+      "verifyHostname": true
     }
   },
   "channels": {
     "neurashield-channel": {
       "orderers": [
-        "orderer.example.com"
+        "orderer.neurashield.com"
       ],
       "peers": {
-        "peer0.org1.example.com": {
+        "peer0.org1.neurashield.com": {
           "endorsingPeer": true,
           "chaincodeQuery": true,
           "ledgerQuery": true,
           "eventSource": true
         },
-        "peer0.org2.example.com": {
+        "peer1.org1.neurashield.com": {
+          "endorsingPeer": true,
+          "chaincodeQuery": true,
+          "ledgerQuery": true,
+          "eventSource": true
+        },
+        "peer0.org2.neurashield.com": {
+          "endorsingPeer": true,
+          "chaincodeQuery": true,
+          "ledgerQuery": true,
+          "eventSource": true
+        },
+        "peer1.org2.neurashield.com": {
           "endorsingPeer": true,
           "chaincodeQuery": true,
           "ledgerQuery": true,
@@ -44,81 +59,98 @@
     "Org1": {
       "mspid": "Org1MSP",
       "peers": [
-        "peer0.org1.example.com"
+        "peer0.org1.neurashield.com",
+        "peer1.org1.neurashield.com"
       ],
       "certificateAuthorities": [
-        "ca.org1.example.com"
+        "ca.org1.neurashield.com"
       ]
     },
     "Org2": {
       "mspid": "Org2MSP",
       "peers": [
-        "peer0.org2.example.com"
+        "peer0.org2.neurashield.com",
+        "peer1.org2.neurashield.com"
       ],
       "certificateAuthorities": [
-        "ca.org2.example.com"
+        "ca.org2.neurashield.com"
       ]
     },
     "OrdererOrg": {
       "mspid": "OrdererMSP",
       "orderers": [
-        "orderer.example.com"
+        "orderer.neurashield.com"
       ]
     }
   },
   "orderers": {
-    "orderer.example.com": {
-      "url": "grpcs://localhost:7050",
+    "orderer.neurashield.com": {
+      "url": "grpcs://orderer.neurashield.com:7050",
       "grpcOptions": {
-        "ssl-target-name-override": "orderer.example.com",
-        "hostnameOverride": "orderer.example.com"
+        "ssl-target-name-override": "orderer.neurashield.com"
       },
       "tlsCACerts": {
-        "path": "/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/tls/ca.crt"
+        "path": "/etc/hyperledger/fabric/tls/ca.crt"
       }
     }
   },
   "peers": {
-    "peer0.org1.example.com": {
-      "url": "grpcs://localhost:7051",
+    "peer0.org1.neurashield.com": {
+      "url": "grpcs://peer0.org1.neurashield.com:7051",
       "grpcOptions": {
-        "ssl-target-name-override": "peer0.org1.example.com",
-        "hostnameOverride": "peer0.org1.example.com"
+        "ssl-target-name-override": "peer0.org1.neurashield.com"
       },
       "tlsCACerts": {
-        "path": "/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+        "path": "/etc/hyperledger/fabric/tls/ca.crt"
       }
     },
-    "peer0.org2.example.com": {
-      "url": "grpcs://localhost:9051",
+    "peer1.org1.neurashield.com": {
+      "url": "grpcs://peer1.org1.neurashield.com:8051",
       "grpcOptions": {
-        "ssl-target-name-override": "peer0.org2.example.com",
-        "hostnameOverride": "peer0.org2.example.com"
+        "ssl-target-name-override": "peer1.org1.neurashield.com"
       },
       "tlsCACerts": {
-        "path": "/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt"
+        "path": "/etc/hyperledger/fabric/tls/ca.crt"
+      }
+    },
+    "peer0.org2.neurashield.com": {
+      "url": "grpcs://peer0.org2.neurashield.com:9051",
+      "grpcOptions": {
+        "ssl-target-name-override": "peer0.org2.neurashield.com"
+      },
+      "tlsCACerts": {
+        "path": "/etc/hyperledger/fabric/tls/ca.crt"
+      }
+    },
+    "peer1.org2.neurashield.com": {
+      "url": "grpcs://peer1.org2.neurashield.com:10051",
+      "grpcOptions": {
+        "ssl-target-name-override": "peer1.org2.neurashield.com"
+      },
+      "tlsCACerts": {
+        "path": "/etc/hyperledger/fabric/tls/ca.crt"
       }
     }
   },
   "certificateAuthorities": {
-    "ca.org1.example.com": {
-      "url": "https://localhost:7054",
+    "ca.org1.neurashield.com": {
+      "url": "https://ca.org1.neurashield.com:7054",
       "caName": "ca-org1",
       "tlsCACerts": {
-        "path": "/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/ca/ca.org1.example.com-cert.pem"
+        "path": "/etc/hyperledger/fabric-ca-server/ca-cert.pem"
       },
       "httpOptions": {
-        "verify": false
+        "verify": true
       }
     },
-    "ca.org2.example.com": {
-      "url": "https://localhost:8054",
+    "ca.org2.neurashield.com": {
+      "url": "https://ca.org2.neurashield.com:8054",
       "caName": "ca-org2",
       "tlsCACerts": {
-        "path": "/home/jub/Cursor/neurashield/fabric-setup/fabric-samples/test-network/organizations/peerOrganizations/org2.example.com/ca/ca.org2.example.com-cert.pem"
+        "path": "/etc/hyperledger/fabric-ca-server/ca-cert.pem"
       },
       "httpOptions": {
-        "verify": false
+        "verify": true
       }
     }
   }

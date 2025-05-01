@@ -1,0 +1,122 @@
+steps:
+# Build and push backend image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/neurashield-backend:$COMMIT_SHA', './backend']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-backend:$COMMIT_SHA']
+
+# Build and push frontend image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/neurashield-frontend:$COMMIT_SHA', './frontend']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-frontend:$COMMIT_SHA']
+
+# Build and push blockchain image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/neurashield-blockchain:$COMMIT_SHA', './blockchain']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-blockchain:$COMMIT_SHA']
+
+# Build and push AI image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA', './models']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA']
+
+# Create latest tags for all images
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag', 'gcr.io/$PROJECT_ID/neurashield-backend:$COMMIT_SHA', 'gcr.io/$PROJECT_ID/neurashield-backend:latest']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag', 'gcr.io/$PROJECT_ID/neurashield-frontend:$COMMIT_SHA', 'gcr.io/$PROJECT_ID/neurashield-frontend:latest']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag', 'gcr.io/$PROJECT_ID/neurashield-blockchain:$COMMIT_SHA', 'gcr.io/$PROJECT_ID/neurashield-blockchain:latest']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag', 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA', 'gcr.io/$PROJECT_ID/neurashield-ai:latest']
+
+# Push latest tags
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-backend:latest']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-frontend:latest']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-blockchain:latest']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/neurashield-ai:latest']
+
+# Deploy to GKE
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+  - 'apply'
+  - '-f'
+  - 'k8s/neurashield-k8s.yaml'
+  env:
+  - 'CLOUDSDK_COMPUTE_REGION=us-west1'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=neurashield-cluster'
+
+# Apply network policies
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+  - 'apply'
+  - '-f'
+  - 'k8s/network-policies.yaml'
+  env:
+  - 'CLOUDSDK_COMPUTE_REGION=us-west1'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=neurashield-cluster'
+
+# Apply GCP credentials (only needs to be done once or when credentials change)
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+  - 'apply'
+  - '-f'
+  - 'k8s/gcp-credentials.yaml'
+  env:
+  - 'CLOUDSDK_COMPUTE_REGION=us-west1'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=neurashield-cluster'
+
+# Apply GCP monitoring configuration (only needs to be done once or when configuration changes)
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+  - 'apply'
+  - '-f'
+  - 'k8s/gcp-monitoring.yaml'
+  env:
+  - 'CLOUDSDK_COMPUTE_REGION=us-west1'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=neurashield-cluster'
+
+# Restart deployments to use the new images
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+  - 'rollout'
+  - 'restart'
+  - 'deployment/neurashield-backend'
+  - 'deployment/neurashield-frontend'
+  - 'deployment/neurashield-blockchain'
+  - 'deployment/neurashield-ai'
+  - 'deployment/neurashield-ipfs'
+  - '-n'
+  - 'neurashield'
+  env:
+  - 'CLOUDSDK_COMPUTE_REGION=us-west1'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=neurashield-cluster'
+
+images:
+- 'gcr.io/$PROJECT_ID/neurashield-backend:$COMMIT_SHA'
+- 'gcr.io/$PROJECT_ID/neurashield-backend:latest'
+- 'gcr.io/$PROJECT_ID/neurashield-frontend:$COMMIT_SHA'
+- 'gcr.io/$PROJECT_ID/neurashield-frontend:latest'
+- 'gcr.io/$PROJECT_ID/neurashield-blockchain:$COMMIT_SHA'
+- 'gcr.io/$PROJECT_ID/neurashield-blockchain:latest'
+- 'gcr.io/$PROJECT_ID/neurashield-ai:$COMMIT_SHA'
+- 'gcr.io/$PROJECT_ID/neurashield-ai:latest'
+
+timeout: 1800s 

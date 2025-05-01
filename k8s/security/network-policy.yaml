@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fabric-network-policy
+  namespace: neurashield
+spec:
+  podSelector:
+    matchLabels:
+      app: fabric-peer
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: neurashield
+    ports:
+    - protocol: TCP
+      port: 7051
+    - protocol: TCP
+      port: 7052
+    - protocol: TCP
+      port: 7053
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+      # For GCS access 

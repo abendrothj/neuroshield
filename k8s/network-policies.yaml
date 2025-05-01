@@ -1,20 +1,19 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: neurashield-frontend-policy
+  name: frontend-policy
+  namespace: neurashield
 spec:
   podSelector:
     matchLabels:
-      app: neurashield
-      component: frontend
+      app: neurashield-frontend
   policyTypes:
   - Ingress
   - Egress
   ingress:
   - from:
-    - namespaceSelector:
-        matchLabels:
-          name: ingress-nginx
+    - ipBlock:
+        cidr: 0.0.0.0/0
     ports:
     - protocol: TCP
       port: 3000
@@ -22,21 +21,21 @@ spec:
   - to:
     - podSelector:
         matchLabels:
-          app: neurashield
-          component: backend
+          app: neurashield-backend
     ports:
     - protocol: TCP
       port: 3001
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: neurashield-backend-policy
+  name: backend-policy
+  namespace: neurashield
 spec:
   podSelector:
     matchLabels:
-      app: neurashield
-      component: backend
+      app: neurashield-backend
   policyTypes:
   - Ingress
   - Egress
@@ -44,11 +43,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: neurashield
-          component: frontend
-    - namespaceSelector:
-        matchLabels:
-          name: ingress-nginx
+          app: neurashield-frontend
     ports:
     - protocol: TCP
       port: 3001
@@ -56,29 +51,41 @@ spec:
   - to:
     - podSelector:
         matchLabels:
-          app: neurashield
-          component: ai
+          app: neurashield-blockchain
+    ports:
+    - protocol: TCP
+      port: 8080
+  - to:
+    - podSelector:
+        matchLabels:
+          app: neurashield-ai
     ports:
     - protocol: TCP
       port: 5000
   - to:
     - podSelector:
         matchLabels:
-          app: neurashield
-          component: ipfs
+          app: neurashield-ipfs
     ports:
     - protocol: TCP
       port: 5001
+  - to:
+    - namespaceSelector: {}
+      podSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+  
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: neurashield-ai-policy
+  name: blockchain-policy
+  namespace: neurashield
 spec:
   podSelector:
     matchLabels:
-      app: neurashield
-      component: ai
+      app: neurashield-blockchain
   policyTypes:
   - Ingress
   - Egress
@@ -86,8 +93,43 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: neurashield
-          component: backend
+          app: neurashield-backend
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 7051  # For external blockchain network
+    - protocol: TCP
+      port: 7054  # For certificate authority
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-policy
+  namespace: neurashield
+spec:
+  podSelector:
+    matchLabels:
+      app: neurashield-ai
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: neurashield-backend
     - namespaceSelector:
         matchLabels:
           name: prometheus
@@ -101,12 +143,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: neurashield-ipfs-policy
+  name: ipfs-policy
+  namespace: neurashield
 spec:
   podSelector:
     matchLabels:
-      app: neurashield
-      component: ipfs
+      app: neurashield-ipfs
   policyTypes:
   - Ingress
   - Egress
@@ -114,9 +156,10 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: neurashield
-          component: backend
+          app: neurashield-backend
     ports:
     - protocol: TCP
       port: 5001
+    - protocol: TCP
+      port: 8080
   egress: [] 
