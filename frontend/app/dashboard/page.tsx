@@ -1,21 +1,18 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import Dashboard from "@/components/dashboard"
-import Layout from "@/components/layout"
+import { Suspense } from "react"
+import { DashboardOverview } from "@/components/dashboard/dashboard-overview"
+import { DashboardCards } from "@/components/dashboard/dashboard-cards"
+import { DashboardCharts } from "@/components/dashboard/dashboard-charts"
+import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton"
 
 export default function DashboardPage() {
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  useEffect(() => {
-    setIsLoaded(true);
-  }, []);
-
   return (
-    <Layout>
-      <div className={`transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
-        <Dashboard />
-      </div>
-    </Layout>
-  );
-} 
+    <div className="space-y-6 ml-64">
+      <h1 className="text-3xl font-bold">Dashboard</h1>
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardOverview />
+        <DashboardCards />
+        <DashboardCharts />
+      </Suspense>
+    </div>
+  )
+}

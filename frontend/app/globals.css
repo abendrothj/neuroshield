@@ -4,73 +4,83 @@
 
 @layer base {
   :root {
-    --background: 220 20% 6%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
 
-    --card: 220 25% 9%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
 
-    --popover: 220 25% 9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 196 100% 47%;
-    --primary-foreground: 220 20% 6%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 270 100% 60%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
 
-    --muted: 220 20% 12%;
-    --muted-foreground: 220 10% 70%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 196 100% 47%;
-    --accent-foreground: 220 20% 6%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
 
-    --destructive: 0 100% 50%;
+    --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 220 20% 15%;
-    --input: 220 20% 15%;
-    --ring: 196 100% 47%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
 
     --radius: 0.5rem;
 
-    /* Custom theme variables */
-    --primary-blue: #00d4ff;
-    --accent-purple: #8a2be2;
-    --dark-bg: hsl(220, 20%, 6%);
-    --card-bg: hsl(220, 25%, 9%);
-    --text-light: hsl(210, 40%, 98%);
-    --text-muted: hsl(220, 10%, 70%);
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
-    --background: 220 20% 6%;
+    --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
-    --card: 220 25% 9%;
+    --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 220 25% 9%;
+    --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 196 100% 47%;
-    --primary-foreground: 220 20% 6%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
 
-    --secondary: 270 100% 60%;
+    --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 220 20% 12%;
-    --muted-foreground: 220 10% 70%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 196 100% 47%;
-    --accent-foreground: 220 20% 6%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 100% 50%;
+    --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 220 20% 15%;
-    --input: 220 20% 15%;
-    --ring: 196 100% 47%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 240 5.9% 10%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
 
@@ -83,240 +93,22 @@
   }
 }
 
-@layer components {
-  .gradient-text {
-    @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
-  }
-
-  .gradient-border {
-    @apply relative before:absolute before:inset-0 before:p-[1px] before:rounded-lg before:bg-gradient-to-r before:from-primary before:to-secondary before:-z-10;
-  }
-
-  .section-container {
-    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24;
-  }
-
-  .section-title {
-    @apply text-3xl md:text-4xl font-bold mb-4 md:mb-6 text-center;
-  }
-
-  .section-subtitle {
-    @apply text-lg md:text-xl text-muted-foreground mb-10 md:mb-16 text-center max-w-3xl mx-auto;
-  }
-
-  .card-glow {
-    @apply transition-shadow duration-300;
-  }
-
-  .card-glow:hover {
-    box-shadow: 0 0 15px rgba(0, 195, 255, 0.5);
-  }
-
-  .pulse-animation {
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0% {
-      box-shadow: 0 0 0 0 rgba(0, 195, 255, 0.4);
-    }
-    70% {
-      box-shadow: 0 0 0 10px rgba(0, 195, 255, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(0, 195, 255, 0);
-    }
-  }
-
-  .fade-in {
-    opacity: 0;
-    transform: translateY(20px);
-    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
-  }
-
-  .fade-in.visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  .timeline-connector {
-    @apply absolute top-7 left-7 h-full w-0.5 -ml-px bg-gradient-to-b from-primary to-secondary;
-  }
-
-  /* Blockchain animation */
-  .blockchain-bg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    z-index: 0;
-  }
-
-  .node {
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    background: var(--primary-blue);
-    border-radius: 50%;
-    animation: float 15s infinite ease-in-out;
-  }
-
-  .node::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: transparent;
-    border: 1px solid var(--primary-blue);
-    opacity: 0.5;
-    animation: pulse-ring 2s infinite;
-  }
-
-  @keyframes float {
-    0%,
-    100% {
-      transform: translateY(0) translateX(0);
-    }
-    25% {
-      transform: translateY(-15px) translateX(10px);
-    }
-    50% {
-      transform: translateY(-5px) translateX(25px);
-    }
-    75% {
-      transform: translateY(-10px) translateX(15px);
-    }
-  }
-
-  @keyframes pulse-ring {
-    0% {
-      width: 12px;
-      height: 12px;
-      opacity: 0.5;
-    }
-    100% {
-      width: 30px;
-      height: 30px;
-      opacity: 0;
-    }
-  }
-
-  /* Feature card hover effect */
-  .feature-card {
-    @apply transition-all duration-300 ease-in-out;
-  }
-
-  .feature-card:hover {
-    transform: scale(1.05);
-  }
-
-  .feature-card .learn-more {
-    @apply opacity-0 transition-opacity duration-300;
-  }
-
-  .feature-card:hover .learn-more {
-    @apply opacity-100;
-  }
-
-  /* Tooltip styles */
-  .tooltip {
-    @apply invisible absolute z-10 w-64 rounded-md bg-card/90 p-3 text-sm opacity-0 shadow-lg transition-all duration-300;
-    bottom: calc(100% + 10px);
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  .tooltip::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border-width: 6px;
-    border-style: solid;
-    border-color: hsl(var(--card)) transparent transparent transparent;
-  }
-
-  .tooltip-trigger:hover .tooltip {
-    @apply visible opacity-100;
-  }
-
-  /* Testimonial carousel */
-  .testimonial-slide {
-    @apply absolute inset-0 transition-opacity duration-500 ease-in-out;
-    opacity: 0;
-  }
-
-  .testimonial-slide.active {
-    opacity: 1;
-    z-index: 1;
-  }
-
-  /* Modal styles */
-  .modal-overlay {
-    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4;
-    animation: fadeIn 0.3s ease-out;
-  }
-
-  .modal-content {
-    @apply bg-card rounded-lg shadow-xl w-full max-w-md p-6 relative;
-    animation: scaleIn 0.3s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  @keyframes scaleIn {
-    from {
-      transform: scale(0.95);
-      opacity: 0;
-    }
-    to {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-
-  /* Step card animations */
-  @keyframes drawLine {
-    from {
-      height: 0;
-    }
-    to {
-      height: 100%;
-    }
-  }
-
-  @keyframes pulse {
-    0% {
-      opacity: 0.5;
-    }
-    50% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0.5;
-    }
-  }
-
-  .animate-pulse {
-    animation: pulse 2s infinite;
-  }
-
-  .animate-draw {
-    animation: drawLine 1.5s ease-out forwards;
-  }
+/* Custom styles for dark theme */
+.dark-theme {
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d29;
+  --border-color: #2a2d3a;
+  --text-primary: #ffffff;
+  --text-secondary: #a0aec0;
 }
 
+/* Apply dark theme by default */
+html {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.card-dark {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+}

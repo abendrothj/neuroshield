@@ -1,63 +1,47 @@
 {
-  "name": "neurashield",
-  "version": "1.0.0",
-  "description": "Comprehensive cybersecurity platform with AI and blockchain technology",
-  "main": "index.js",
-  "engines": {
-    "node": ">=18.19.1",
-    "npm": ">=9.0.0"
-  },
+  "name": "neurashield-frontend",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "start": "docker compose up",
-    "start:prod": "NODE_ENV=production docker compose up -d",
-    "start:dev": "NODE_ENV=development docker compose up",
-    "stop": "docker compose down",
-    "setup:dev": "bash scripts/set-environment.sh dev",
-    "setup:prod": "bash scripts/set-environment.sh prod",
-    "deploy:k8s": "bash k8s/deploy.sh",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
     "test": "jest",
-    "test:websocket": "node backend/tests/websocket.test.js",
-    "test:performance:ai-model": "node backend/tests/performance/ai-model.test.js",
-    "test:security:sql-injection": "node backend/tests/security/sql-injection.test.js",
-    "test:load:api": "node backend/tests/load/api.test.js",
-    "system-test": "bash scripts/system-test.sh",
-    "perf-test": "bash scripts/performance-benchmark.sh",
-    "security-test": "bash scripts/security-audit.sh",
-    "uat": "bash scripts/user-acceptance-test.sh",
-    "audit": "npm audit --production",
-    "audit:fix": "npm audit fix --production",
-    "deps:check": "npx depcheck",
-    "lint": "eslint .",
-    "migrate:pages-to-app": "bash scripts/migrate-pages-to-app.sh",
-    "prepare": "husky install"
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "perf:analyze": "cross-env ANALYZE=true next build",
+    "perf:lighthouse": "lighthouse http://localhost:3000 --view",
+    "perf:bundle": "next build && source-map-explorer .next/static/**/*.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/your-username/neurashield.git"
-  },
-  "keywords": [
-    "cybersecurity",
-    "ai",
-    "blockchain",
-    "threat-detection"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.7",
-    "helmet": "^7.1.0",
-    "express-rate-limit": "^7.1.5",
-    "dotenv": "^16.3.1"
+    "next": "14.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "date-fns": "^2.30.0",
+    "react-day-picker": "^8.10.1",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.1"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.3.0",
     "eslint": "^8.56.0",
-    "husky": "^8.0.3",
-    "lint-staged": "^15.2.0",
-    "depcheck": "^1.4.7"
-  },
-  "lint-staged": {
-    "*.js": "eslint --fix",
-    "*.{json,md}": "prettier --write"
+    "eslint-config-next": "14.1.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "@types/jest": "^29.5.12",
+    "@testing-library/react": "^14.2.1",
+    "@testing-library/jest-dom": "^6.1.5",
+    "@testing-library/user-event": "^14.5.1",
+    "cross-env": "^7.0.3",
+    "@next/bundle-analyzer": "^14.1.0",
+    "source-map-explorer": "^2.5.3",
+    "lighthouse": "^11.0.0"
   }
 } 
