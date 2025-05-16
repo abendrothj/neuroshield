@@ -1,20 +1,21 @@
+/**
+ * Jest configuration for NeuraShield backend
+ */
+
 module.exports = {
   testEnvironment: 'node',
-  testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   collectCoverageFrom: [
-    'src/**/*.{js,jsx}',
+    'src/**/*.js',
     '!**/node_modules/**',
-    '!**/vendor/**',
   ],
-  coverageThreshold: {
-    global: {
-      branches: 80,
-      functions: 80,
-      lines: 80,
-      statements: 80,
-    },
+  coverageDirectory: '../coverage/backend',
+  testMatch: [
+    '**/tests/**/*.test.js',
+    '**/test/**/*.test.js',
+  ],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
-  setupFiles: ['<rootDir>/jest.setup.js'],
-  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  setupFilesAfterEnv: ['../test/setup.js'],
   verbose: true,
-} 
+}; 

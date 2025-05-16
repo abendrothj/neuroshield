@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ChaincodeVersion = "1.0.0"
+	ChaincodeVersion = "1.0.1"
 	EventTypeIndex   = "eventType~timestamp~id"
 	MaxPageSize      = 100
 )
@@ -19,12 +19,24 @@ type SmartContract struct {
 }
 
 type SecurityEvent struct {
-	ID        string `json:"id"`
-	Timestamp string `json:"timestamp"`
-	Type      string `json:"type"`
-	Details   string `json:"details"`
-	IPFSHash  string `json:"ipfshash"`
-	Version   string `json:"version"`
+	ID          string `json:"id"`
+	Timestamp   string `json:"timestamp"`
+	Type        string `json:"type"`
+	Details     string `json:"details"`
+	IPFSHash    string `json:"ipfshash"`
+	EventHash   string `json:"eventHash"`
+	TxID        string `json:"txId"`
+	BlockNumber uint64 `json:"blockNumber"`
+	Version     string `json:"version"`
+}
+
+type TransactionReceipt struct {
+	TxID        string `json:"txId"`
+	EventID     string `json:"eventId"`
+	Timestamp   string `json:"timestamp"`
+	BlockNumber uint64 `json:"blockNumber"`
+	Status      string `json:"status"`
+	EventHash   string `json:"eventHash"`
 }
 
 type QueryResult struct {
@@ -35,12 +47,15 @@ type QueryResult struct {
 
 func (s *SmartContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
 	event := SecurityEvent{
-		ID:        "init1",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Type:      "Initialization",
-		Details:   "Ledger initialized for NeuraShield",
-		IPFSHash:  "",
-		Version:   ChaincodeVersion,
+		ID:          "init1",
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Type:        "Initialization",
+		Details:     "Ledger initialized for NeuraShield",
+		IPFSHash:    "",
+		EventHash:   "",
+		TxID:        ctx.GetStub().GetTxID(),
+		BlockNumber: 0,
+		Version:     ChaincodeVersion,
 	}
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
@@ -49,50 +64,85 @@ func (s *SmartContract) InitLedger(ctx contractapi.TransactionContextInterface) 
 	return ctx.GetStub().PutState("init1", eventJSON)
 }
 
-func (s *SmartContract) LogEvent(ctx contractapi.TransactionContextInterface, id, timestamp, eventType, details, ipfsHash string) error {
+func (s *SmartContract) LogEvent(ctx contractapi.TransactionContextInterface, id, timestamp, eventType, details, ipfsHash, eventHash string) (*TransactionReceipt, error) {
 	// Validate input
 	if id == "" || timestamp == "" || eventType == "" {
-		return fmt.Errorf("required fields cannot be empty")
+		return nil, fmt.Errorf("required fields cannot be empty")
 	}
 
 	// Check if event already exists
 	existingEvent, err := s.QueryEvent(ctx, id)
 	if err == nil && existingEvent != nil {
-		return fmt.Errorf("event with ID %s already exists", id)
+		return nil, fmt.Errorf("event with ID %s already exists", id)
 	}
 
+	// Get transaction ID
+	txID := ctx.GetStub().GetTxID()
+
+	// Get current block height (will be incremented after this transaction)
+	blockNumber, err := ctx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction timestamp: %v", err)
+	}
+
+	// Create the event
 	event := SecurityEvent{
-		ID:        id,
-		Timestamp: timestamp,
-		Type:      eventType,
-		Details:   details,
-		IPFSHash:  ipfsHash,
-		Version:   ChaincodeVersion,
+		ID:          id,
+		Timestamp:   timestamp,
+		Type:        eventType,
+		Details:     details,
+		IPFSHash:    ipfsHash,
+		EventHash:   eventHash,
+		TxID:        txID,
+		BlockNumber: uint64(blockNumber.Seconds), // Using seconds as a rough proxy for block number
+		Version:     ChaincodeVersion,
 	}
 
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("failed to marshal event: %v", err)
+		return nil, fmt.Errorf("failed to marshal event: %v", err)
 	}
 
 	// Store the event
 	err = ctx.GetStub().PutState(id, eventJSON)
 	if err != nil {
-		return fmt.Errorf("failed to put event: %v", err)
+		return nil, fmt.Errorf("failed to put event: %v", err)
 	}
 
 	// Create and store composite key
 	compositeKey, err := ctx.GetStub().CreateCompositeKey(EventTypeIndex, []string{eventType, timestamp, id})
 	if err != nil {
-		return fmt.Errorf("failed to create composite key: %v", err)
+		return nil, fmt.Errorf("failed to create composite key: %v", err)
 	}
 
 	err = ctx.GetStub().PutState(compositeKey, []byte{0x00})
 	if err != nil {
-		return fmt.Errorf("failed to put composite key: %v", err)
+		return nil, fmt.Errorf("failed to put composite key: %v", err)
 	}
 
-	return nil
+	// Create transaction receipt
+	receipt := TransactionReceipt{
+		TxID:        txID,
+		EventID:     id,
+		Timestamp:   timestamp,
+		BlockNumber: event.BlockNumber,
+		Status:      "COMMITTED",
+		EventHash:   eventHash,
+	}
+
+	// Return transaction receipt
+	return &receipt, nil
+}
+
+func (s *SmartContract) VerifyEvent(ctx contractapi.TransactionContextInterface, id, providedHash string) (bool, error) {
+	// Get the event
+	event, err := s.QueryEvent(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("failed to get event: %v", err)
+	}
+
+	// Compare the provided hash with the stored hash
+	return event.EventHash == providedHash, nil
 }
 
 func (s *SmartContract) QueryEvent(ctx contractapi.TransactionContextInterface, id string) (*SecurityEvent, error) {
@@ -170,10 +220,15 @@ func (s *SmartContract) QueryEventsWithPagination(ctx contractapi.TransactionCon
 			return nil, fmt.Errorf("failed to get next result: %v", err)
 		}
 
+		// Skip composite keys
+		if len(queryResponse.Value) == 1 && queryResponse.Value[0] == 0x00 {
+			continue
+		}
+
 		var event SecurityEvent
 		err = json.Unmarshal(queryResponse.Value, &event)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal event: %v", err)
+			continue // Skip invalid entries
 		}
 
 		events = append(events, &event)
@@ -184,6 +239,31 @@ func (s *SmartContract) QueryEventsWithPagination(ctx contractapi.TransactionCon
 		Bookmark:   metadata.GetBookmark(),
 		TotalCount: len(events),
 	}, nil
+}
+
+func (s *SmartContract) QueryTransactionReceipt(ctx contractapi.TransactionContextInterface, txID string) (*TransactionReceipt, error) {
+	// Query all events
+	result, err := s.QueryEventsWithPagination(ctx, MaxPageSize, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events: %v", err)
+	}
+
+	// Find event with matching transaction ID
+	for _, event := range result.Records {
+		if event.TxID == txID {
+			receipt := TransactionReceipt{
+				TxID:        event.TxID,
+				EventID:     event.ID,
+				Timestamp:   event.Timestamp,
+				BlockNumber: event.BlockNumber,
+				Status:      "COMMITTED",
+				EventHash:   event.EventHash,
+			}
+			return &receipt, nil
+		}
+	}
+
+	return nil, fmt.Errorf("transaction with ID %s not found", txID)
 }
 
 func (s *SmartContract) GetVersion(ctx contractapi.TransactionContextInterface) (string, error) {

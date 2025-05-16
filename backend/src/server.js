@@ -1,23 +1,32 @@
+/**
+ * NeuraShield Backend Server
+ */
+
+require('dotenv').config();
 const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
 const { Gateway, Wallets } = require('fabric-network');
 const { create } = require('ipfs-http-client');
-const path = require('path');
-const fs = require('fs');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 const { body, param, validationResult } = require('express-validator');
 const winston = require('winston');
 const { metricsApp, httpRequestDuration, httpRequestsTotal, blockchainSyncStatus, modelAccuracy } = require('./metrics');
-const helmet = require('helmet');
 const bodyParser = require('body-parser');
-const cors = require('cors');
 const blockchainIntegration = require('./blockchain-integration');
 const identityManager = require('../identity-manager');
-const { initObservability } = require('./gcp-observability');
-require('dotenv').config();
+const { initObservability, logger } = require('./local-observability');
+const observability = initObservability();
 
-// Initialize GCP observability (Trace, Profiler, Error Reporting)
-const { trace, errorReporting, errorReportingMiddleware } = initObservability();
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, '../logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
 // Setup production logging
 const logger = winston.createLogger({
@@ -65,10 +74,14 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const app = express();
-app.use(express.json());
 
-// Add security middleware
+// Apply security middleware
 app.use(helmet());
+app.use(cors());
+app.use(bodyParser.json());
+
+// Apply observability middleware
+app.use(observability.middleware.metrics);
 
 // Add rate limiting
 const apiLimiter = rateLimit({
@@ -82,667 +95,77 @@ const apiLimiter = rateLimit({
 // Apply rate limiting to all API routes
 app.use('/api', apiLimiter);
 
-// Add Error Reporting middleware if initialized
-if (errorReportingMiddleware) {
-    app.use(errorReportingMiddleware);
-}
-
-// IPFS configuration
-const ipfs = create({ url: process.env.IPFS_URL || 'http://localhost:5001' });
-
-// Fabric configuration
-const ccpPath = path.resolve(__dirname, '..', 'connection-profile.json');
-const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
-
-// Channel and chaincode configuration
-const CHANNEL_NAME = process.env.CHANNEL_NAME || 'neurashield-channel';
-const CHAINCODE_NAME = process.env.CHAINCODE_NAME || 'neurashield';
-
-// Connection pool for Fabric gateway
-const gatewayPool = {
-    pool: [], // Store active gateways
-    maxSize: 5, // Maximum number of gateways in the pool
-    activeConnections: 0,
-    
-    async getGateway() {
-        // If a gateway is available in the pool, return it
-        if (this.pool.length > 0) {
-            logger.debug('Reusing gateway from pool');
-            this.activeConnections++;
-            return this.pool.pop();
-        }
-        
-        // Otherwise create a new gateway
-        logger.debug('Creating new gateway');
-        const wallet = await Wallets.newFileSystemWallet(path.join(__dirname, '..', 'wallet'));
-        const gateway = new Gateway();
-        await gateway.connect(ccp, { 
-            wallet, 
-            identity: process.env.USER_ID || 'admin', 
-            discovery: { enabled: false }
-        });
-        this.activeConnections++;
-        return gateway;
-    },
-    
-    releaseGateway(gateway) {
-        // Only add gateway back to pool if not exceeding max size
-        try {
-            if (this.pool.length < this.maxSize) {
-                this.pool.push(gateway);
-                logger.debug('Gateway returned to pool');
-            } else {
-                // If pool is full, disconnect this gateway
-                gateway.disconnect();
-                logger.debug('Gateway disconnected (pool full)');
-            }
-        } catch (error) {
-            logger.error(`Error releasing gateway: ${error}`);
-            try {
-                gateway.disconnect();
-            } catch (e) {
-                logger.error(`Error disconnecting gateway: ${e}`);
-            }
-        }
-        this.activeConnections--;
-    }
-};
-
-// Helper function to get and safely release a gateway
-async function withGateway(callback) {
-    let gateway = null;
-    try {
-        gateway = await gatewayPool.getGateway();
-        return await callback(gateway);
-    } finally {
-        if (gateway) {
-            gatewayPool.releaseGateway(gateway);
-        }
-    }
-}
-
-// Initialize Fabric gateway - kept for backward compatibility
-async function getGateway() {
-    try {
-        const wallet = await Wallets.newFileSystemWallet(path.join(__dirname, '..', 'wallet'));
-        const adminExists = await wallet.get('admin');
-        if (!adminExists) {
-            logger.error('Admin identity not found in wallet');
-            throw new Error('Admin identity not found in wallet');
-        }
-        logger.info('Successfully loaded admin identity from wallet');
-        
-        const gateway = new Gateway();
-        await gateway.connect(ccp, { 
-            wallet, 
-            identity: 'admin', 
-            discovery: { enabled: false }
-        });
-        
-        return gateway;
-    } catch (error) {
-        logger.error(`Error getting gateway: ${error}`);
-        throw error;
-    }
-}
-
-// Input validation middleware
-const validate = (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-    next();
-};
-
-// Metrics middleware
-const metricsMiddleware = (req, res, next) => {
-    const start = Date.now();
-    res.on('finish', () => {
-        const duration = (Date.now() - start) / 1000;
-        httpRequestDuration
-            .labels(req.method, req.route?.path || req.path, res.statusCode)
-            .observe(duration);
-        httpRequestsTotal
-            .labels(req.method, req.route?.path || req.path, res.statusCode)
-            .inc();
-    });
-    next();
-};
-
-app.use(metricsMiddleware);
-
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'healthy',
-        gatewayPool: {
-            poolSize: gatewayPool.pool.length,
-            activeConnections: gatewayPool.activeConnections
-        }
-    });
+  res.status(200).json({ status: 'healthy' });
 });
 
-app.get('/api/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'healthy',
-        version: '1.0.0',
-        timestamp: new Date().toISOString()
-    });
-});
+// API routes
+app.use('/api', require('./routes/api')(observability));
 
 // Metrics endpoint
-app.use('/metrics', metricsApp);
-
-// Update blockchain sync status periodically
-const updateBlockchainStatus = async () => {
-    // Skip blockchain check if SKIP_BLOCKCHAIN is set to true
-    if (process.env.SKIP_BLOCKCHAIN === 'true') {
-        logger.info('Blockchain sync check skipped due to SKIP_BLOCKCHAIN setting');
-        return;
-    }
-    
-    let gateway;
-    try {
-        gateway = await getGateway();
-        if (!gateway) {
-            blockchainSyncStatus.set(0); // 0 = not synced
-            logger.warn('Blockchain sync status: not synced - gateway not available');
-            return;
-        }
-        
-        // Try to connect to the network
-        try {
-            const network = await gateway.getNetwork(CHANNEL_NAME);
-        if (network) {
-            blockchainSyncStatus.set(1); // 1 = synced
-            logger.info('Blockchain sync status: synced');
-        } else {
-                blockchainSyncStatus.set(0); // 0 = not synced
-                logger.warn('Blockchain sync status: not synced - network not available');
-            }
-        } catch (networkError) {
-            blockchainSyncStatus.set(0); // 0 = not synced
-            logger.warn(`Blockchain sync status: not synced - network error: ${networkError.message}`);
-            // Don't throw the error further, just log it
-        }
-    } catch (error) {
-        blockchainSyncStatus.set(0); // 0 = not synced
-        logger.error(`Error checking blockchain sync status: ${error.message}`);
-        // Don't throw the error further, just log it
-    } finally {
-        if (gateway) {
-            try {
-                gateway.disconnect();
-            } catch (err) {
-                logger.error(`Error disconnecting gateway: ${err.message}`);
-            }
-        }
-    }
-};
-
-// Run immediately and then every 5 minutes
-updateBlockchainStatus();
-setInterval(updateBlockchainStatus, 5 * 60 * 1000);
-
-// Helper function to record threat data to blockchain
-async function recordToBlockchain(cid, results) {
-    try {
-        if (process.env.SKIP_BLOCKCHAIN === 'true') {
-            logger.info(`Blockchain recording skipped due to SKIP_BLOCKCHAIN setting. IPFS CID: ${cid}`);
-            return true;
-        }
-        
-        return await withGateway(async (gateway) => {
-            try {
-                const network = await gateway.getNetwork(CHANNEL_NAME);
-                const contract = network.getContract(CHAINCODE_NAME);
-            
-            // Create a summary of the threats
-            const threatSummary = results.map(r => ({
-                level: r.threat_level,
-                confidence: r.confidence,
-                timestamp: new Date().toISOString()
-            }));
-            
-            // Submit transaction to record the threat
-            await contract.submitTransaction(
-                'recordThreat', 
-                cid, 
-                JSON.stringify(threatSummary)
-            );
-            
-            logger.info(`Successfully recorded threat to blockchain, IPFS CID: ${cid}`);
-            return true;
-            } catch (error) {
-                logger.error(`Error in blockchain transaction: ${error.message}`);
-                // Return success anyway so the flow continues
-                return true;
-            }
-        });
-    } catch (error) {
-        logger.error(`Blockchain recording error: ${error.message}`);
-        // Return success anyway to not break the application flow
-        return true;
-    }
-}
-
-// AI service integration
-app.post('/api/analyze', 
-    [
-        apiLimiter,
-        body('data').isArray().withMessage('Data must be an array of objects'),
-        validate
-    ],
-    async (req, res) => {
-        try {
-            const { data } = req.body;
-            
-            // Validate data
-            if (!data || !Array.isArray(data) || data.length === 0) {
-                return res.status(400).json({ 
-                    error: 'Invalid request format',
-                    message: 'The data field must be a non-empty array of objects'
-                });
-            }
-            
-            // Send to AI service for analysis
-            const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:5000';
-            logger.info(`Sending data to AI service at ${aiServiceUrl}/analyze`);
-            const startTime = Date.now();
-            
-            // Send to AI service for analysis
-            const aiResponse = await axios.post(`${aiServiceUrl}/analyze`, { data });
-            const processingTime = (Date.now() - startTime) / 1000;
-            
-            // Update model accuracy if provided in the response
-            if (aiResponse.data.model_info && aiResponse.data.model_info.accuracy) {
-                modelAccuracy.set(aiResponse.data.model_info.accuracy);
-            }
-            
-            // Extract the threat results
-            const results = aiResponse.data.results;
-            
-            // Record threats to blockchain and IPFS if needed
-            if (results.some(result => result.threat_level !== "Normal")) {
-                let cid = null;
-                
-                // Try to store on IPFS, but continue if it fails
-                try {
-                    // Store the raw data on IPFS
-                    const ipfsResult = await ipfs.add(JSON.stringify({
-                        data,
-                        analysis: results,
-                        timestamp: new Date().toISOString()
-                    }));
-                    
-                    cid = ipfsResult.cid.toString();
-                    logger.info(`Stored threat data on IPFS with CID: ${cid}`);
-                    
-                    // Include the IPFS reference in the response
-                    aiResponse.data.ipfs_cid = cid;
-                } catch (ipfsError) {
-                    logger.error(`Failed to store on IPFS: ${ipfsError}`);
-                    // Create a fallback CID value to indicate IPFS storage failed
-                    cid = 'ipfs-storage-failed-' + Date.now();
-                    aiResponse.data.ipfs_storage_error = true;
-                }
-                
-                // Record to blockchain (attempt only, don't block the response)
-                // This is run asynchronously to not delay the response
-                if (cid) {
-                    recordToBlockchain(cid, results).catch(err => {
-                        logger.error(`Failed to record to blockchain: ${err}`);
-                    });
-                }
-            }
-            
-            logger.info(`Analysis completed in ${processingTime}s, returned ${results.length} result(s)`);
-            res.json(aiResponse.data);
-        } catch (error) {
-            logger.error(`Failed to analyze data: ${error.message}`);
-            res.status(500).json({ error: error.message });
-        }
-    }
-);
-
-// AI metrics endpoint for frontend
-app.get('/api/ai-metrics', apiLimiter, async (req, res) => {
-    try {
-        // Get metrics from AI service's formatted endpoint
-        logger.info(`Fetching metrics from AI service at ${process.env.AI_SERVICE_URL}/api/metrics`);
-        const aiResponse = await axios.get(`${process.env.AI_SERVICE_URL}/api/metrics`);
-        
-        // Return metrics from AI service
-        const metrics = aiResponse.data;
-        
-        // Add additional context from the blockchain
-        try {
-            let gateway = await getGateway();
-            const network = await gateway.getNetwork(CHANNEL_NAME);
-            const contract = network.getContract(CHAINCODE_NAME);
-            
-            // Get threat stats from blockchain
-            const threatStatsBuffer = await contract.evaluateTransaction('getThreatStats');
-            const threatStats = JSON.parse(threatStatsBuffer.toString());
-            
-            metrics.threat_stats = threatStats;
-            gateway.disconnect();
-        } catch (blockchainError) {
-            logger.warn(`Could not get blockchain metrics: ${blockchainError.message}`);
-            // Continue without blockchain metrics
-        }
-        
-        res.json(metrics);
-    } catch (error) {
-        logger.error(`Failed to get AI metrics: ${error.message}`);
-        // Return default values if can't get real metrics
-        res.json({
-            accuracy: modelAccuracy.get() || 0.9,
-            inference_time: 0.05,
-            memory_usage: 500 * 1024 * 1024,
-            predictions_total: 10000,
-            error_rate: 0.01,
-            model_version: "1.0.0",
-            threat_detection_rate: 0.05,
-            gpu_utilization: 0.3
-        });
-    }
+app.get('/metrics', (req, res) => {
+  const metrics = {
+    service: process.env.SERVICE_NAME || 'neurashield-backend',
+    version: process.env.SERVICE_VERSION || '1.0.0',
+    uptime: process.uptime(),
+    timestamp: new Date(),
+    memoryUsage: process.memoryUsage(),
+    counters: {},
+    histograms: {}
+  };
+  
+  // Add counter metrics
+  observability.metricsTracker.counters.forEach((counter, name) => {
+    metrics.counters[name] = {
+      value: counter.value,
+      description: counter.description
+    };
+  });
+  
+  // Add histogram metrics
+  observability.metricsTracker.histograms.forEach((histogram, name) => {
+    metrics.histograms[name] = {
+      description: histogram.description,
+      stats: histogram.getStats()
+    };
+  });
+  
+  res.status(200).json(metrics);
 });
 
-// Model training endpoint
-app.post('/api/train-model',
-    [
-        apiLimiter,
-        body('epochs').isInt({ min: 1, max: 1000 }).withMessage('Epochs must be between 1 and 1000'),
-        body('batchSize').isInt({ min: 1, max: 512 }).withMessage('Batch size must be between 1 and 512'),
-        body('learningRate').isFloat({ min: 0.0001, max: 0.1 }).withMessage('Learning rate must be between 0.0001 and 0.1'),
-        body('datasetSize').isInt({ min: 1000, max: 100000 }).withMessage('Dataset size must be between 1000 and 100000'),
-        body('validationSplit').isFloat({ min: 0.1, max: 0.5 }).withMessage('Validation split must be between 0.1 and 0.5'),
-        validate
-    ],
-    async (req, res) => {
-        try {
-            const { epochs, batchSize, learningRate, datasetSize, validationSplit } = req.body;
-            
-            logger.info(`Initiating model training with epochs=${epochs}, batchSize=${batchSize}, learningRate=${learningRate}`);
-            
-            // Call the AI service to start training
-            const aiResponse = await axios.post(`${process.env.AI_SERVICE_URL}/train`, {
-                epochs,
-                batch_size: batchSize,
-                learning_rate: learningRate,
-                dataset_size: datasetSize,
-                validation_split: validationSplit
-            });
-            
-            res.json({
-                success: true,
-                message: 'Model training initiated successfully',
-                jobId: aiResponse.data.job_id
-            });
-        } catch (error) {
-            logger.error(`Failed to initiate model training: ${error}`);
-            res.status(500).json({ success: false, message: error.message });
-        }
-    }
-);
-
-// Model training status endpoint
-app.get('/api/train-model/:jobId', apiLimiter, async (req, res) => {
-    try {
-        const { jobId } = req.params;
-        
-        // Call the AI service to get training status
-        const aiResponse = await axios.get(`${process.env.AI_SERVICE_URL}/train/${jobId}`);
-        
-        res.json(aiResponse.data);
-    } catch (error) {
-        logger.error(`Failed to get training status: ${error}`);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
-// Routes
-app.post('/api/events', 
-    [
-        apiLimiter,
-        body('id').isString().withMessage('ID must be a string'),
-        body('timestamp').isISO8601().withMessage('Timestamp must be a valid ISO8601 date'),
-        body('type').isString().withMessage('Type must be a string'),
-        body('details').isObject().withMessage('Details must be an object'),
-        validate
-    ],
-    async (req, res) => {
-        try {
-            const { id, timestamp, type, details } = req.body;
-            
-            // Upload details to IPFS with proper error handling
-            let ipfsHash;
-            try {
-                const ipfsResult = await ipfs.add(JSON.stringify(details));
-                ipfsHash = ipfsResult.path;
-                logger.info(`Stored details on IPFS with hash: ${ipfsHash}`);
-            } catch (ipfsError) {
-                logger.error(`IPFS storage error: ${ipfsError}`);
-                // Continue without IPFS storage, using a fallback
-                ipfsHash = 'ipfs-storage-unavailable';
-            }
-
-            // Store event on Fabric
-            await withGateway(async (gateway) => {
-                const network = await gateway.getNetwork(CHANNEL_NAME);
-                const contract = network.getContract(CHAINCODE_NAME);
-                
-                await contract.submitTransaction('LogEvent', id, timestamp, type, JSON.stringify(details), ipfsHash);
-            });
-            
-            logger.info(`Event logged successfully: ${id}`);
-            res.json({ 
-                success: true, 
-                message: 'Event logged successfully', 
-                ipfsHash,
-                ipfs_storage_success: ipfsHash !== 'ipfs-storage-unavailable'
-            });
-        } catch (error) {
-            logger.error(`Failed to log event: ${error}`);
-            res.status(500).json({ error: error.message });
-        }
-    }
-);
-
-app.get('/api/events/:id', 
-    [
-        apiLimiter,
-        param('id').isString().withMessage('ID must be a string'),
-        validate
-    ],
-    async (req, res) => {
-        try {
-            const result = await withGateway(async (gateway) => {
-                const network = await gateway.getNetwork(CHANNEL_NAME);
-                const contract = network.getContract(CHAINCODE_NAME);
-                
-                const resultBuffer = await contract.evaluateTransaction('QueryEvent', req.params.id);
-                return JSON.parse(resultBuffer.toString());
-            });
-            
-            res.json(result);
-        } catch (error) {
-            logger.error(`Failed to query event: ${error}`);
-            res.status(500).json({ error: error.message });
-        }
-    }
-);
-
-app.get('/api/events', apiLimiter, async (req, res) => {
-    try {
-        const result = await withGateway(async (gateway) => {
-            const network = await gateway.getNetwork(CHANNEL_NAME);
-            const contract = network.getContract(CHAINCODE_NAME);
-            
-            const resultBuffer = await contract.evaluateTransaction('QueryAllEvents');
-            return JSON.parse(resultBuffer.toString());
-        });
-        
-        res.json(result);
-    } catch (error) {
-        logger.error(`Failed to query all events: ${error}`);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Blockchain integration routes
-app.post('/api/v1/ai-detection', blockchainIntegration.aiDetectionWebhook);
-
-// Add blockchain event query endpoints
-app.get('/api/v1/events', async (req, res) => {
-    try {
-        const gateway = await getBlockchainGateway();
-        const network = await gateway.getNetwork(CHANNEL_NAME);
-        const contract = network.getContract(CHAINCODE_NAME);
-        
-        // Query all events from blockchain
-        const result = await contract.evaluateTransaction('QueryAllEvents');
-        
-        // Parse the results
-        const events = JSON.parse(result.toString());
-        
-        // Close gateway connection
-        gateway.disconnect();
-        
-        res.json(events);
-    } catch (error) {
-        logger.error(`Error fetching blockchain events: ${error.message}`);
-        res.status(500).json({ error: 'Failed to fetch blockchain events' });
-    }
-});
-
-app.get('/api/v1/events/:id', async (req, res) => {
-    try {
-        const eventId = req.params.id;
-        const gateway = await getBlockchainGateway();
-        const network = await gateway.getNetwork(CHANNEL_NAME);
-        const contract = network.getContract(CHAINCODE_NAME);
-        
-        // Query specific event from blockchain
-        const result = await contract.evaluateTransaction('QueryEvent', eventId);
-        
-        // Parse the result
-        const event = JSON.parse(result.toString());
-        
-        // Close gateway connection
-        gateway.disconnect();
-        
-        if (!event) {
-            return res.status(404).json({ error: 'Event not found' });
-        }
-        
-        res.json(event);
-    } catch (error) {
-        logger.error(`Error fetching blockchain event: ${error.message}`);
-        res.status(500).json({ error: 'Failed to fetch blockchain event' });
-    }
-});
-
-// Add secure error handler (to replace any existing error handlers)
+// Error handling middleware
+app.use(observability.middleware.errorReporting);
 app.use((err, req, res, next) => {
-    // Log detailed error for internal use
-    logger.error('Server error', { 
-        error: process.env.NODE_ENV === 'production' ? err.message : err.stack,
-        path: req.path,
-        method: req.method,
-        ip: req.ip,
-        user: req.user ? req.user.id : 'anonymous'
-    });
-
-    // Report error to GCP Error Reporting if available
-    if (errorReporting) {
-        errorReporting.report(err);
+  logger.error('Unhandled error', { 
+    error: { 
+      message: err.message,
+      stack: err.stack
     }
-
-    // Send safe response to client
-    res.status(err.status || 500).json({ 
-        error: process.env.NODE_ENV === 'production' 
-            ? 'An unexpected error occurred' 
-            : err.message
-    });
+  });
+  
+  res.status(500).json({
+    error: {
+      message: 'An internal server error occurred',
+      code: 'INTERNAL_ERROR'
+    }
+  });
 });
 
-// Helper function to get blockchain gateway
-async function getBlockchainGateway() {
-    try {
-        // Use identity manager to get the gateway connection
-        return await identityManager.getGatewayConnection(
-            process.env.BLOCKCHAIN_IDENTITY || 'blockchain-service'
-        );
-    } catch (error) {
-        logger.error(`Error getting blockchain gateway: ${error.message}`);
-        throw error;
-    }
-}
+// Start server
+const PORT = process.env.PORT || 3001;
+const server = app.listen(PORT, () => {
+  logger.info(`Server listening on port ${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});
 
-// Server configuration
-const PORT = process.env.PORT || 3000;
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5000';
-const IPFS_URL = process.env.IPFS_URL || 'http://localhost:5001';
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received. Shutting down gracefully.');
+  server.close(() => {
+    logger.info('HTTP server closed.');
+    process.exit(0);
+  });
+});
 
-// Safe startup to handle blockchain errors
-async function startServer() {
-    try {
-        logger.info(`Starting server with configuration:
-            Port: ${PORT}
-            AI Service URL: ${AI_SERVICE_URL}
-            IPFS URL: ${IPFS_URL}
-            Channel Name: ${CHANNEL_NAME}
-            Chaincode Name: ${CHAINCODE_NAME}
-            Blockchain Enabled: ${process.env.SKIP_BLOCKCHAIN !== 'true'}
-            GCP Observability: ${trace ? 'Enabled' : 'Disabled'}
-        `);
-
-        // If not skipping blockchain, run the update immediately
-        if (process.env.SKIP_BLOCKCHAIN !== 'true') {
-            try {
-                await updateBlockchainStatus().catch(err => {
-                    logger.error(`Error during initial blockchain status update: ${err.message}`);
-                });
-            } catch (blockchainError) {
-                logger.error(`Failed to initialize blockchain: ${blockchainError.message}`);
-                logger.info('Server will continue running without blockchain integration');
-            }
-        } else {
-            logger.info('Blockchain integration is disabled');
-        }
-        
-        // Start metrics server on a different port
-        const metricsPort = process.env.METRICS_PORT || 3001;
-        metricsApp.listen(metricsPort, () => {
-            logger.info(`Metrics server running on port ${metricsPort}`);
-        });
-        
-        // Start server whether blockchain initialization succeeded or not
-        const server = app.listen(PORT, () => {
-            logger.info(`Server running on port ${PORT}`);
-        }); 
-
-        // Handle server errors
-        server.on('error', (error) => {
-            logger.error(`Server error: ${error.message}`);
-            process.exit(1);
-        });
-        
-        // Set up the blockchain status update interval
-        setInterval(() => {
-            updateBlockchainStatus().catch(err => {
-                logger.error(`Error in scheduled blockchain status update: ${err.message}`);
-            });
-        }, 5 * 60 * 1000); // Every 5 minutes
-        
-    } catch (error) {
-        logger.error(`Failed to start server: ${error.message}`);
-        process.exit(1);
-    }
-}
-
-// Start the server
-startServer(); 
+module.exports = app; 

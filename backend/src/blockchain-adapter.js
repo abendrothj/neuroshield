@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const winston = require('winston');
 const { Gateway, Wallets } = require('fabric-network');
+const crypto = require('crypto');
 
 // Setup logging
 const logger = winston.createLogger({
@@ -124,27 +125,74 @@ async function getBlockchainImplementation() {
                         ? eventData.details 
                         : JSON.stringify(eventData.details || {});
                     
+                    // Generate a hash of the event data for verification
+                    const eventHash = this.generateEventHash(eventId, timestamp, type, details);
+                    
                     // Submit transaction to record event
-                    await contract.submitTransaction(
+                    const result = await contract.submitTransaction(
                         'LogEvent', 
                         eventId, 
                         timestamp, 
                         type, 
                         details,
-                        eventData.ipfsHash || ''
+                        eventData.ipfsHash || '',
+                        eventHash
                     );
+                    
+                    // Parse transaction result to get transaction ID
+                    const txId = JSON.parse(result.toString()).txId || '';
                     
                     // Close gateway connection
                     gateway.disconnect();
                     
-                    logger.info(`Event ${eventId} successfully recorded on blockchain`);
+                    logger.info(`Event ${eventId} successfully recorded on blockchain with txId ${txId}`);
                     return { 
                         success: true, 
-                        eventId 
+                        eventId,
+                        txId,
+                        eventHash
                     };
                 } catch (error) {
                     logger.error(`Error recording event on blockchain: ${error.message}`);
                     throw error;
+                }
+            },
+            
+            /**
+             * Generate a cryptographic hash of event data for verification.
+             */
+            generateEventHash(eventId, timestamp, type, details) {
+                const data = `${eventId}|${timestamp}|${type}|${details}`;
+                return crypto.createHash('sha256').update(data).digest('hex');
+            },
+            
+            /**
+             * Verify if an event's data matches its recorded hash on the blockchain.
+             */
+            verifyEventIntegrity(event) {
+                try {
+                    // Re-generate the hash from the event data
+                    const calculatedHash = this.generateEventHash(
+                        event.eventId,
+                        event.timestamp,
+                        event.type,
+                        event.details
+                    );
+                    
+                    // Compare with the stored hash
+                    const isValid = calculatedHash === event.eventHash;
+                    
+                    return {
+                        isValid,
+                        calculatedHash,
+                        storedHash: event.eventHash
+                    };
+                } catch (error) {
+                    logger.error(`Error verifying event integrity: ${error.message}`);
+                    return {
+                        isValid: false,
+                        error: error.message
+                    };
                 }
             },
             
@@ -221,6 +269,61 @@ async function getBlockchainImplementation() {
             },
             
             /**
+             * Verify a blockchain transaction by ID.
+             */
+            async verifyTransaction(txId) {
+                logger.info(`Verifying transaction ${txId}`);
+                try {
+                    const walletPath = path.join(__dirname, '..', 'wallet');
+                    const wallet = await Wallets.newFileSystemWallet(walletPath);
+                    
+                    // Get Gateway connection
+                    const gateway = new Gateway();
+                    await gateway.connect(ccp, { 
+                        wallet, 
+                        identity: 'admin', 
+                        discovery: { enabled: false }
+                    });
+                    
+                    // Get network
+                    const network = await gateway.getNetwork(CHANNEL_NAME);
+                    
+                    // Get transaction details
+                    const transaction = await network.getChannel().queryTransaction(txId);
+                    
+                    // Close gateway connection
+                    gateway.disconnect();
+                    
+                    if (!transaction) {
+                        throw new Error(`Transaction ${txId} not found`);
+                    }
+                    
+                    // Extract validation code
+                    const validationCode = transaction.transactionEnvelope.validationCode;
+                    const isValid = validationCode === 0; // 0 means valid in Fabric
+                    
+                    // Get timestamp
+                    const timestamp = new Date(transaction.transactionEnvelope.header.channelHeader.timestamp).toISOString();
+                    
+                    // Get block information
+                    const blockNumber = transaction.transactionEnvelope.blockNumber || 'unknown';
+                    
+                    logger.info(`Transaction ${txId} verification: ${isValid ? 'Valid' : 'Invalid'}`);
+                    
+                    return {
+                        isValid,
+                        txId,
+                        blockNumber,
+                        timestamp,
+                        validationCode
+                    };
+                } catch (error) {
+                    logger.error(`Error verifying transaction ${txId}: ${error.message}`);
+                    throw error;
+                }
+            },
+            
+            /**
              * Process AI detection and record it on the blockchain.
              */
             async aiDetectionWebhook(req, res) {
@@ -249,18 +352,70 @@ async function getBlockchainImplementation() {
                     
                     res.json({
                         success: true,
-                        eventId: result.eventId,
-                        message: 'AI detection recorded on blockchain'
+                        event_id: result.eventId,
+                        transaction_id: result.txId,
+                        hash: result.eventHash,
+                        blockchain: 'hyperledger-fabric'
                     });
                 } catch (error) {
-                    logger.error(`Error processing AI detection webhook: ${error.message}`);
+                    logger.error(`Error in AI detection webhook: ${error.message}`);
                     res.status(500).json({ error: error.message });
+                }
+            },
+            
+            /**
+             * Generate a verification certificate for an event.
+             */
+            async generateVerificationCertificate(eventId) {
+                logger.info(`Generating verification certificate for event ${eventId}`);
+                try {
+                    // Fetch the event
+                    const event = await this.fetchEvent(eventId);
+                    if (!event) {
+                        throw new Error(`Event ${eventId} not found`);
+                    }
+                    
+                    // Verify event integrity
+                    const integrityCheck = this.verifyEventIntegrity(event);
+                    if (!integrityCheck.isValid) {
+                        throw new Error('Event data integrity check failed');
+                    }
+                    
+                    // Verify transaction
+                    const txVerification = await this.verifyTransaction(event.txId);
+                    if (!txVerification.isValid) {
+                        throw new Error('Transaction verification failed');
+                    }
+                    
+                    // Generate certificate
+                    const certificate = {
+                        eventId: event.eventId,
+                        type: event.type,
+                        timestamp: event.timestamp,
+                        blockchainTimestamp: txVerification.timestamp,
+                        blockNumber: txVerification.blockNumber,
+                        transactionId: event.txId,
+                        dataHash: event.eventHash,
+                        verificationTimestamp: new Date().toISOString(),
+                        status: 'VERIFIED',
+                        verificationDetails: {
+                            dataIntegrity: integrityCheck,
+                            transactionValidity: txVerification
+                        }
+                    };
+                    
+                    logger.info(`Verification certificate generated for event ${eventId}`);
+                    return certificate;
+                    
+                } catch (error) {
+                    logger.error(`Error generating verification certificate: ${error.message}`);
+                    throw error;
                 }
             }
         };
     } catch (error) {
-        logger.error(`Failed to get blockchain implementation: ${error.message}`);
-        throw new Error(`Production blockchain implementation is required but failed: ${error.message}`);
+        logger.error(`Error getting blockchain implementation: ${error.message}`);
+        throw error;
     }
 }
 

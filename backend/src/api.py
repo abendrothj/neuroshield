@@ -379,6 +379,63 @@ async def recent_threats():
         logging.error(f"Error getting recent threats: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.route('/api/blockchain/verify/<event_id>', methods=['GET'])
+def verify_blockchain_event(event_id):
+    """Verify a blockchain event and generate a verification certificate"""
+    try:
+        # In a real implementation, this would call the blockchain adapter
+        # For development/testing, we can use a simple mock
+        if os.environ.get('USE_MOCK_BLOCKCHAIN') == 'true':
+            # Return a mock verification certificate
+            return jsonify({
+                "eventId": event_id,
+                "type": "SECURITY_EVENT",
+                "timestamp": "2023-06-15T10:30:15.123Z",
+                "blockchainTimestamp": "2023-06-15T10:30:45.789Z",
+                "blockNumber": "12345",
+                "transactionId": "abcdef1234567890abcdef1234567890",
+                "dataHash": "8a1bc7a5d0e96c273d974b3b713f11067193ebca4efe7266e249d7774ebcc67d",
+                "verificationTimestamp": datetime.now().isoformat(),
+                "status": "VERIFIED",
+                "verificationDetails": {
+                    "dataIntegrity": {
+                        "isValid": True,
+                        "calculatedHash": "8a1bc7a5d0e96c273d974b3b713f11067193ebca4efe7266e249d7774ebcc67d",
+                        "storedHash": "8a1bc7a5d0e96c273d974b3b713f11067193ebca4efe7266e249d7774ebcc67d"
+                    },
+                    "transactionValidity": {
+                        "isValid": True,
+                        "txId": "abcdef1234567890abcdef1234567890",
+                        "blockNumber": "12345",
+                        "timestamp": "2023-06-15T10:30:45.789Z",
+                        "validationCode": 0
+                    }
+                }
+            })
+        else:
+            # In production, we would call the actual blockchain adapter
+            # This requires integrating with the Node.js blockchain-adapter.js
+            from subprocess import Popen, PIPE
+            import json
+            
+            # Call the Node.js verification script
+            process = Popen(
+                ['node', '../scripts/verify-blockchain-event.js', event_id],
+                stdout=PIPE,
+                stderr=PIPE
+            )
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                raise Exception(f"Verification failed: {stderr.decode('utf-8')}")
+            
+            # Parse the result
+            result = json.loads(stdout.decode('utf-8'))
+            return jsonify(result)
+    except Exception as e:
+        app.logger.error(f"Blockchain verification error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle all exceptions and return a JSON response"""
